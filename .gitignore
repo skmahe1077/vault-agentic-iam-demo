@@ -1,0 +1,18 @@
+# secrets / licenses — never commit
+.env
+*.env
+*.hclic
+VAULT_LICENSE
+*.pem
+*.key
+verify-oauth-secrets.json
+.vault-token
+
+# local state
+vault-config/data/
+docker-compose/vault/data/
+docker-compose/vault/logs/
+*.log
+
+# os
+.DS_Store

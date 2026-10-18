@@ -1,0 +1,16 @@
+# Narrow RBAC Role bound to the Vault Kubernetes secrets engine role
+# "checkout-restart-role". This is the literal ceiling on what any credential
+# minted from that Vault role can ever do: patch/get/list on Deployments in
+# prod-checkout only. It cannot touch prod-billing, cannot delete, cannot
+# read Secrets. The Vault K8s secrets engine Role further narrows this down
+# to a single Deployment at request time via bound object annotations.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: checkout-restart-role
+  namespace: prod-checkout
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["checkout-service"]
+    verbs: ["get", "list", "patch"]

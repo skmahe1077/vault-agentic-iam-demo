@@ -1,0 +1,14 @@
+# Exists only so beat 4 (ceiling-overreach demo) has a real Vault K8s role
+# to request against. sre-incident-agent's ceiling policy never grants
+# kubernetes/creds/billing-restart-role, so the request is denied
+# (RAR_NO_MATCH) even though oncall-engineer's own policy allows it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: billing-restart-role
+  namespace: prod-billing
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["billing-service"]
+    verbs: ["get", "list", "patch"]
