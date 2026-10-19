@@ -57,7 +57,7 @@ if ! REGISTRATION_ID=$(vault read -field=id "agent-registry/registration/entity-
       display_name="sre-incident-agent" \
       description="Diagnoses and remediates checkout-service incidents via ephemeral, task-scoped grants" \
       entity_id="${AGENT_ENTITY_ID}" \
-      ceiling_policies='["ceiling-sre-incident-agent"]')
+      ceiling_policies="ceiling-sre-incident-agent")
 fi
 
 echo "ONCALL_ENTITY_ID=${ONCALL_ENTITY_ID}"

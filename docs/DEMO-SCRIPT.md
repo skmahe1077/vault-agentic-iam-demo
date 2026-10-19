@@ -95,6 +95,19 @@ vault read agent-registry/registration/entity-id/"$(vault read -field=id identit
 Say: "sre-incident-agent is a real Vault entity, registered in the Agent Registry with its
 own ceiling policy — not a shared service account, not a static password."
 
+### Beat 2b (optional) — the delegation itself is real, against the actual IBM Verify tenant
+
+```bash
+./scripts/dev/real-ibmverify-obo-demo.sh
+```
+Requires `.env.ibmverify.local` filled in and the one-time `verify-real` profile +
+`*-real` entity-alias setup from `docs/TALK-NOTES.md`. Say: "this isn't simulated — that's a
+real client-credentials grant, a real password grant, and a real RFC 8693 token exchange
+against our actual IBM Verify tenant. Vault resolves both identities from it for real." Then
+point out in the output that it's missing the RAR scoping beats 4–5 will show — explain that
+piece is demonstrated separately (next beats) because of a gap in HashiCorp's own current
+IBM Verify integration guide, not a limitation of Vault itself.
+
 ### Beats 3–5 — delegated, ceiling-capped, ephemeral grant does the real fix
 
 ```bash

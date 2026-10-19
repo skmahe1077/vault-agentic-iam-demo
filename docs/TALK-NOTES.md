@@ -298,6 +298,79 @@ any `vault read`/`vault write` call. This proves Vault's side of OBO+RAR for rea
 substitute for validating IBM Verify's actual token endpoint behavior before the talk (still
 the one real unknown -- see below).
 
+## IBM Verify real-tenant integration: blocked on a HashiCorp doc gap (found 2026-10-19)
+
+Tried for real against `devopstronaut.verify.ibm.com` (not mock): both `act.sub` (delegation)
+and `authorization_details` (RAR) work *individually* against this tenant, confirmed with
+real decoded JWTs --
+
+- **Delegation works**: RFC 8693 token-exchange with `subject_token` + `actor_token` reliably
+  returns a JWT with a populated `act.sub` claim. Tested repeatedly, works every time.
+- **`authorization_details` never appears in the issued token**, even after doing everything
+  documented: created an Authorization Detail Type named `vault:path_access` with the exact
+  schema from developer.hashicorp.com/vault/ai/iam/providers/verify, confirmed it as a
+  selected "Authorization detail type" on the STS client's "Custom scopes and API access"
+  settings, confirmed the Name/Schema are byte-for-byte correct, waited for propagation,
+  retried multiple times. Still absent.
+- Checked IBM's own docs (docs.verify.ibm.com) directly: `authorization_details` is
+  documented on the **Authorize**, **PAR**, and **Device Authorization** endpoints -- all
+  human-consent-driven flows -- but is **not** documented on the token-exchange grant at all.
+  The PAR endpoint's full parameter schema has **no** delegation/actor/on-behalf-of parameter
+  either. No documented path combines delegation + RAR in one request/token for IBM Verify
+  SaaS.
+- **Root cause, confirmed directly from HashiCorp's own setup-obo doc**: the IBM Verify tab
+  of the "validate the OBO flow" step contains a literally broken, non-functional curl
+  example (`--variable`, `--expand-data` -- not real curl flags, mismatched quoting). The
+  only complete, working worked example in that doc is for **Auth0**, not IBM Verify. This
+  looks like a genuine gap in HashiCorp's reference material, not a tenant misconfiguration
+  on our side -- we correctly configured everything the docs actually describe.
+
+**Decision**: use the mock-IdP path (`scripts/dev/`) for the actual talk. It proves the exact
+same protocol mechanics Vault enforces (sub/act.sub/authorization_details, JWKS validation,
+ceiling intersection) and has been validated repeatedly end-to-end. Real IBM Verify
+integration is a follow-up for after the talk, pursued with IBM/HashiCorp support directly --
+not a blocker. `agent/secure/request-delegation-token.sh`'s real (non-mock) branch is left in
+place for whenever that gets resolved, unchanged.
+
+**Update 2026-10-19, same day**: split the demo so delegation (OBO) and RAR are shown
+*separately*, since delegation genuinely works against the real tenant -- only RAR doesn't.
+`scripts/dev/real-ibmverify-obo-demo.sh` performs the real client_credentials + ROPC +
+token-exchange sequence against `devopstronaut.verify.ibm.com` and presents the resulting
+token straight to Vault. Confirmed live: Vault resolves the real entity/actor via a *second*
+set of entity-aliases tied to the real issuer, and grants `database/creds/readonly-orders`
+via ceiling ∩ human-policy alone (no RAR claim present). Audit log shows
+`metadata.jwt_issuer: https://devopstronaut.verify.ibm.com/oidc/endpoint/default` and
+`metadata.actor_entity_name: sre-incident-agent` for real.
+
+One-time setup this required, on top of the mock-IdP config (both profiles coexist --
+Vault matches by `iss` claim, so there's no conflict):
+```bash
+# Second oauth-resource-server profile, pointed at the real tenant, with
+# optional_authorization_details=true so a token lacking the RAR claim
+# isn't rejected outright (the mock profile keeps it required/false).
+vault write sys/config/oauth-resource-server/verify-real \
+  issuer_id="${IBM_VERIFY_ISSUER}" use_jwks=true user_claim=sub \
+  supported_algorithms="RS256" jwks_uri="${IBM_VERIFY_JWKS_URI}" \
+  optional_authorization_details=true
+
+# A SECOND entity-alias on each existing entity (Vault allows multiple
+# aliases per entity, one per issuer) -- external_id values are the real
+# claims confirmed earlier: the human's numeric sub, the agent's client_id
+# as act.sub.
+vault write identity/entity-alias name="jwt-binding-subject-real" \
+  canonical_id="<oncall-engineer entity id>" issuer="${IBM_VERIFY_ISSUER}" \
+  external_id="6470002374"
+vault write identity/entity-alias name="jwt-binding-actor-real" \
+  canonical_id="<sre-incident-agent entity id>" issuer="${IBM_VERIFY_ISSUER}" \
+  external_id="${IBM_VERIFY_CLIENT_ID}"
+```
+
+Also re-found and this time actually fixed in the script file (not just live via CLI):
+`vault-config/03-register-identities-and-agent.sh` still had
+`ceiling_policies='["ceiling-sre-incident-agent"]'` (the bracketed-string bug from the
+2026-10-18 Agent Registry session) -- the live fix from that session was never saved back
+into the file. Now reads `ceiling_policies="ceiling-sre-incident-agent"`.
+
 ## Known rough edges to validate before the live run
 
 - **The one real unknown left**: the actual OBO+RAR delegation-token exchange against a real
