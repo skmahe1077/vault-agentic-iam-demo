@@ -17,7 +17,7 @@ for i in $(seq 1 "${LEAK_CONN_COUNT}"); do
 done
 
 echo "Breaking checkout-service readiness probe to induce CrashLoopBackOff..."
-kubectl config use-context "kind-${CLUSTER_NAME}" >/dev/null
+kubectl config use-context "${CLUSTER_NAME}" >/dev/null
 kubectl -n prod-checkout patch deployment checkout-service --type=json -p='[
   {"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/path", "value": "/__bad_health_path__"},
   {"op": "replace", "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/path", "value": "/__bad_health_path__"}

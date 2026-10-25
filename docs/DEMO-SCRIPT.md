@@ -8,7 +8,9 @@ at the bottom); nothing else in this script changes either way.
 ## Before you go on stage (not shown live)
 
 This demo targets **HCP Vault Dedicated** exclusively -- no local Vault container, no Vault
-Enterprise license.
+Enterprise license. The Kubernetes side runs on a real **EKS** cluster in AWS (replacing the
+local `kind` cluster used earlier), provisioned by `terraform/`, so HCP Vault Dedicated can
+reach its API server directly over a public endpoint -- no tunnel, no HVN peering.
 
 ```bash
 cp .env.example .env            # fill in ORDERS_DB_ADMIN_PASSWORD
@@ -17,28 +19,35 @@ export VAULT_ADDR=https://<cluster-id>.vault.<region>.aws.hashicorp.cloud:8200
 export VAULT_NAMESPACE=admin
 vault login                     # token/OIDC/userpass -- whatever this cluster's auth method is
 
-./scripts/bootstrap-kind.sh
-kubectl --context kind-vault-agentic-iam apply -f k8s_manifests/vault-k8s-secrets-engine-rbac.yaml
-```
+cd terraform
+terraform init
+terraform apply \
+  -var='eks_public_access_cidrs=["<your-ip>/32","<HCP Vault Dedicated egress CIDRs -- see HashiCorp HCP network docs>"]'
+cd ..
 
-Before the next step: HCP Vault Dedicated must have a network path to reach the `kind`
-cluster's API server and `orders-db` -- a tunnel (ngrok/cloudflared) or HVN-peered VPC, since
-there's no local Vault container to `docker network connect` into `kind`'s network anymore.
-`K8S_HOST` below has to resolve to something reachable *from HCP's network*.
+export AWS_REGION=us-east-1     # match terraform/variables.tf aws_region
+./scripts/bootstrap-eks.sh
+kubectl --context vault-agentic-iam apply -f k8s_manifests/vault-k8s-secrets-engine-rbac.yaml
+```
 
 `./vault-config/00-enable-audit.sh` is a known gap against HCP (no local `file` audit device
 there -- see docs/TALK-NOTES.md); beat 6 is currently unavailable on this path.
 
+`orders-db` still runs locally via docker-compose, so HCP Vault Dedicated still needs a
+network path to reach *it* specifically (the database secrets engine's `connection_url`) even
+though the Kubernetes secrets engine's `K8S_HOST` is now a real public EKS endpoint -- a
+tunnel (ngrok/cloudflared) for now, same caveat as before just narrowed to orders-db alone.
+
 ```bash
 mkdir -p /tmp/vault-k8s-config
-kubectl --context kind-vault-agentic-iam config view --raw \
-  -o jsonpath='{.clusters[?(@.name=="kind-vault-agentic-iam")].cluster.certificate-authority-data}' \
+kubectl --context vault-agentic-iam config view --raw \
+  -o jsonpath='{.clusters[?(@.name=="vault-agentic-iam")].cluster.certificate-authority-data}' \
   | base64 -d > /tmp/vault-k8s-config/ca.pem
-kubectl --context kind-vault-agentic-iam -n vault create token vault --duration=87600h \
+kubectl --context vault-agentic-iam -n vault create token vault --duration=87600h \
   > /tmp/vault-k8s-config/reviewer.jwt
 
 ORDERS_DB_ADMIN_PASSWORD=changeme-local-only \
-K8S_HOST="<tunnel-or-peered-endpoint-for-kind-control-plane>:6443" \
+K8S_HOST="$(terraform -chdir=terraform output -raw cluster_endpoint)" \
 K8S_CA_CERT=/tmp/vault-k8s-config/ca.pem \
 K8S_REVIEWER_JWT=/tmp/vault-k8s-config/reviewer.jwt \
   ./vault-config/01-enable-secrets-engines.sh
@@ -75,7 +84,7 @@ export SRE_AGENT_SUBJECT="sre-incident-agent-test-subject"
 
 ```bash
 ./scripts/trigger-incident.sh
-kubectl --context kind-vault-agentic-iam -n prod-checkout get pods   # watch READY/RESTARTS climb
+kubectl --context vault-agentic-iam -n prod-checkout get pods   # watch READY/RESTARTS climb
 ```
 Say: "checkout-service is degrading — a connection leak against the orders database, and the
 pod can't stay healthy."

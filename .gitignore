@@ -16,5 +16,12 @@ docker-compose/vault/data/
 docker-compose/vault/logs/
 *.log
 
+# terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+terraform/crash.log
+
 # os
 .DS_Store

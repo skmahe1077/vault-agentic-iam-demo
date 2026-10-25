@@ -8,14 +8,14 @@ set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-vault-agentic-iam}"
 
-kubectl --context "kind-${CLUSTER_NAME}" create serviceaccount sre-incident-agent-insecure -n default \
-  --dry-run=client -o yaml | kubectl --context "kind-${CLUSTER_NAME}" apply -f -
+kubectl --context "${CLUSTER_NAME}" create serviceaccount sre-incident-agent-insecure -n default \
+  --dry-run=client -o yaml | kubectl --context "${CLUSTER_NAME}" apply -f -
 
-kubectl --context "kind-${CLUSTER_NAME}" create clusterrolebinding sre-incident-agent-insecure-admin \
+kubectl --context "${CLUSTER_NAME}" create clusterrolebinding sre-incident-agent-insecure-admin \
   --clusterrole=cluster-admin --serviceaccount=default:sre-incident-agent-insecure \
-  --dry-run=client -o yaml | kubectl --context "kind-${CLUSTER_NAME}" apply -f -
+  --dry-run=client -o yaml | kubectl --context "${CLUSTER_NAME}" apply -f -
 
-STATIC_K8S_TOKEN=$(kubectl --context "kind-${CLUSTER_NAME}" -n default create token sre-incident-agent-insecure --duration=24h)
+STATIC_K8S_TOKEN=$(kubectl --context "${CLUSTER_NAME}" -n default create token sre-incident-agent-insecure --duration=24h)
 
 echo
 echo "export STATIC_K8S_TOKEN=\"${STATIC_K8S_TOKEN}\""

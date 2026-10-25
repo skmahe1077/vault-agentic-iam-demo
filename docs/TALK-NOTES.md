@@ -76,22 +76,27 @@ export VAULT_ADDR=https://<cluster-id>.vault.<region>.aws.hashicorp.cloud:8200
 export VAULT_NAMESPACE=admin
 vault login                     # token/OIDC/userpass -- whatever this cluster's auth method is
 
-# Creates a dedicated kind cluster -- CLUSTER_NAME defaults to
-# vault-agentic-iam, won't touch any of your other kind clusters.
-./scripts/bootstrap-kind.sh
+# EKS cluster (replaces the local kind cluster used earlier) -- provision
+# first with `terraform -chdir=terraform apply`, see "EKS on AWS replaces
+# kind" below. CLUSTER_NAME defaults to vault-agentic-iam, matching
+# terraform/variables.tf's cluster_name default.
+export AWS_REGION=us-east-1
+./scripts/bootstrap-eks.sh
 
 # Vault's own RBAC for managing the K8s API (ServiceAccount "vault" in
 # namespace "vault", plus `bind` grants scoped to the two target Roles --
 # see "Kubernetes secrets engine wiring" below for why).
-kubectl --context kind-vault-agentic-iam apply -f k8s_manifests/vault-k8s-secrets-engine-rbac.yaml
+kubectl --context vault-agentic-iam apply -f k8s_manifests/vault-k8s-secrets-engine-rbac.yaml
 
-# HCP Vault Dedicated needs a network path to K8S_HOST and orders-db below
-# -- a tunnel or HVN-peered VPC, since there's no local Vault container to
-# put on the same docker network as kind anymore. ./vault-config/00-enable-
-# audit.sh is a known gap against HCP (see below) -- omitted here.
+# orders-db still runs locally via docker-compose, so HCP Vault Dedicated
+# still needs a network path to reach it specifically (a tunnel, since
+# there's no local Vault container on orders-db's docker network anymore).
+# EKS's API server is a real public endpoint now, so K8S_HOST below needs
+# no tunnel. ./vault-config/00-enable-audit.sh is a known gap against HCP
+# (see below) -- omitted here.
 
 ORDERS_DB_ADMIN_PASSWORD=... \
-K8S_HOST="<tunnel-or-peered-endpoint-for-kind-control-plane>:6443" \
+K8S_HOST="$(terraform -chdir=terraform output -raw cluster_endpoint)" \
 K8S_CA_CERT=/tmp/vault-k8s-config/ca.pem \
 K8S_REVIEWER_JWT=/tmp/vault-k8s-config/reviewer.jwt \
   ./vault-config/01-enable-secrets-engines.sh
@@ -120,10 +125,10 @@ Generating `K8S_CA_CERT` / `K8S_REVIEWER_JWT` for the run order above:
 
 ```bash
 mkdir -p /tmp/vault-k8s-config
-kubectl --context kind-vault-agentic-iam config view --raw \
-  -o jsonpath='{.clusters[?(@.name=="kind-vault-agentic-iam")].cluster.certificate-authority-data}' \
+kubectl --context vault-agentic-iam config view --raw \
+  -o jsonpath='{.clusters[?(@.name=="vault-agentic-iam")].cluster.certificate-authority-data}' \
   | base64 -d > /tmp/vault-k8s-config/ca.pem
-kubectl --context kind-vault-agentic-iam -n vault create token vault --duration=87600h \
+kubectl --context vault-agentic-iam -n vault create token vault --duration=87600h \
   > /tmp/vault-k8s-config/reviewer.jwt
 ```
 
@@ -150,10 +155,12 @@ Things that weren't obvious and cost real debugging time:
 - **10-minute TTL floor**: Kubernetes' own TokenRequest API rejects `expirationSeconds < 600`
   regardless of what Vault's `token_default_ttl` requests. Roles are set to 10m/15m, not the
   originally-planned 2m/5m.
-- **`kubectl --token=X` does nothing if a cert-based context is current**: if the active
-  kubeconfig context already has an embedded client-certificate (true for kind's own admin
-  context), `kubectl --token=X --server=Y` silently authenticates as that cert instead of the
-  token — confirmed by passing a garbage token and watching it "succeed." Both agent scripts
+- **`kubectl --token=X` does nothing if a cert-/exec-based context is current**: if the active
+  kubeconfig context already has an embedded client-certificate or exec-based auth plugin
+  (true for kind's own admin context, and for `aws eks update-kubeconfig`'s default
+  IAM-authenticator context), `kubectl --token=X --server=Y` silently authenticates via that
+  instead of the token — confirmed by passing a garbage token and watching it "succeed." Both
+  agent scripts
   now route through `scripts/lib/ephemeral-kubeconfig.sh`, which builds a throwaway kubeconfig
   containing *only* the token, before touching the K8s API. This matters for the demo's
   integrity, not just correctness: without it, beat 4's "ceiling blocks this" moment would
@@ -243,15 +250,55 @@ What doesn't carry over:
   dev-mode Vault was itself a container on the same docker bridge network as `kind`. HCP Vault
   Dedicated runs in HashiCorp's own cloud (an HVN) — `K8S_HOST` (and the Postgres host for the
   database secrets engine) must be reachable *from HCP's network*, not just the laptop running
-  these scripts. Options: a tunnel (ngrok/cloudflared) exposing both for quick rehearsal, or
-  HVN peering to a VPC that hosts them for something closer to production. Neither is wired up
-  in this repo yet — treat it as a prerequisite to arrange per-environment, not a script flag.
+  these scripts. **Resolved for the K8s side (2026-10-24)**: `kind` was replaced with a real
+  EKS cluster in AWS (`terraform/`), given a public API endpoint restricted to HCP's published
+  egress CIDRs + the presenter's IP (`eks_public_access_cidrs`) — see "EKS on AWS replaces
+  kind" below. `orders-db` is still local-only, so it still needs a tunnel
+  (ngrok/cloudflared) for HCP Vault Dedicated to reach it; that half of the gap remains.
 - **Beat 6 (`scripts/show-audit-trail.sh`) doesn't work as-is.** It tails a local `file` audit
   device at `docker-compose/vault/logs/audit.log`, which only existed because local dev-mode
   Vault mounted that path from the container — now removed. HCP Vault Dedicated has no
   equivalent local filesystem to mount — audit instead goes through HCP's own audit log
   streaming to an external sink (CloudWatch/Datadog/etc., configured in the HCP portal). Known
   gap: this repo doesn't yet adapt beat 6 to query a streamed sink.
+
+## EKS on AWS replaces kind (2026-10-24)
+
+`scripts/bootstrap-kind.sh` is gone, renamed `scripts/bootstrap-eks.sh`; the cluster itself is
+now provisioned by `terraform/` (an EKS module + a public-subnet-only VPC module, both from
+`terraform-aws-modules`) instead of `kind create cluster`. Reasoning: the kubernetes secrets
+engine's `K8S_HOST` needs to be reachable *from HCP Vault Dedicated's network*, and a real EKS
+public endpoint is a more durable answer to that than a tunnel into a laptop-local `kind`
+cluster — closer to how this would actually run, not just a rehearsal trick.
+
+What changed mechanically:
+
+- kubectl context is now just `vault-agentic-iam` (no `kind-` prefix) — every script that used
+  to do `kubectl --context "kind-${CLUSTER_NAME}"` now does `kubectl --context
+  "${CLUSTER_NAME}"`. `scripts/bootstrap-eks.sh` sets this via `aws eks update-kubeconfig
+  --alias "${CLUSTER_NAME}"`.
+- `k8s_manifests/*.yaml` (the Deployments, the two Vault-targeted Roles, Vault's own RBAC)
+  needed **zero changes** — they're plain K8s manifests with nothing kind-specific in them.
+- The EKS API server is given a public endpoint restricted via
+  `eks_public_access_cidrs` (terraform/variables.tf) to HCP Vault Dedicated's published egress
+  CIDR ranges plus the presenter's own IP — deliberately has no default, so you can't
+  `terraform apply` with the API server open to the whole internet by accident.
+- Nodes sit in public subnets with no NAT gateway, to keep this cheap for a short-lived demo
+  cluster. **Unverified**: whether the EKS-managed node group's own launch template overrides
+  the subnet's `map_public_ip_on_launch` for the nodes' network interfaces (module-version-
+  dependent AWS launch-template behavior) — check with `aws ec2 describe-instances` after
+  `terraform apply`; if nodes come up without a public IP, the fallback is `enable_nat_gateway
+  = true` on `module.vpc` (small added cost, not yet needed/tested).
+- `orders-db` (Postgres) stays local via docker-compose -- only the K8s side moved to AWS.
+  HCP Vault Dedicated still needs a tunnel to reach it for the database secrets engine; this
+  is the one reachability gap EKS doesn't close.
+- `enable_cluster_creator_admin_permissions = true` grants the Terraform-applying IAM
+  principal cluster-admin via an EKS access entry — no hand-rolled `aws-auth` ConfigMap.
+- Not yet run live against a real AWS account/HCP Vault Dedicated cluster at the time of this
+  note — `terraform validate` and `terraform init` (module/provider resolution) pass, but
+  `terraform apply` + the full K8S_HOST/CA/reviewer-JWT handoff into
+  `vault-config/01-enable-secrets-engines.sh` hasn't been rehearsed end-to-end yet. Treat as
+  the next thing to validate before relying on it live.
 
 ## Agent Registry + identity wiring (resolved 2026-10-18)
 

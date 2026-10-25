@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 : "${STATIC_ORDERS_DB_PASSWORD:?set to the static orders_admin password (the standing credential)}"
 : "${STATIC_K8S_TOKEN:?set to a long-lived, broad ServiceAccount token (the standing credential)}"
 
-K8S_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' --context "kind-${CLUSTER_NAME}")
+K8S_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' --context "${CLUSTER_NAME}")
 # Route through an isolated kubeconfig so this genuinely exercises
 # STATIC_K8S_TOKEN -- kubectl --token=X silently falls back to the active
 # context's embedded admin cert instead of honoring the flag, which would

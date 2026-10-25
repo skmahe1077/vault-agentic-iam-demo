@@ -32,7 +32,7 @@ FIX_TOKEN=$(RAR_PATH="kubernetes/creds/checkout-restart-role" RAR_CAPABILITY="up
   "${SCRIPT_DIR}/request-delegation-token.sh")
 K8S_CREDS=$(VAULT_TOKEN="${FIX_TOKEN}" vault write -format=json kubernetes/creds/checkout-restart-role kubernetes_namespace=prod-checkout)
 K8S_TOKEN=$(echo "${K8S_CREDS}" | jq -r '.data.service_account_token')
-K8S_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' --context "kind-${CLUSTER_NAME}")
+K8S_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' --context "${CLUSTER_NAME}")
 EPHEMERAL_KUBECONFIG=$("${SCRIPT_DIR}/../../scripts/lib/ephemeral-kubeconfig.sh" "${K8S_TOKEN}" "${K8S_SERVER}")
 kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
   -n prod-checkout rollout restart deployment/checkout-service

@@ -10,10 +10,10 @@ docker exec orders-db psql -U orders_admin -d orders -c \
   || echo "orders-db not running, skipping."
 
 echo "Restoring checkout-service readiness/liveness probes..."
-kubectl config use-context "kind-${CLUSTER_NAME}" >/dev/null 2>&1 && \
+kubectl config use-context "${CLUSTER_NAME}" >/dev/null 2>&1 && \
 kubectl -n prod-checkout patch deployment checkout-service --type=json -p='[
   {"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/path", "value": "/"},
   {"op": "replace", "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/path", "value": "/"}
-]' || echo "kind cluster not running, skipping."
+]' || echo "EKS cluster context '${CLUSTER_NAME}' not reachable, skipping."
 
 echo "Reset complete."

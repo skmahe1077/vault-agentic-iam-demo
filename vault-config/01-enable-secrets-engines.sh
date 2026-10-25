@@ -7,8 +7,8 @@
 set -euo pipefail
 
 : "${ORDERS_DB_ADMIN_PASSWORD:?set to the orders-db admin password}"
-: "${K8S_HOST:?set to the kind API server address reachable from the Vault container, e.g. https://host.docker.internal:<mapped-port> (see docs/TALK-NOTES.md)}"
-: "${K8S_CA_CERT:?path to the kind cluster CA cert}"
+: "${K8S_HOST:?set to the EKS cluster's API server address (terraform -chdir=terraform output -raw cluster_endpoint) -- see docs/TALK-NOTES.md}"
+: "${K8S_CA_CERT:?path to the EKS cluster CA cert}"
 : "${K8S_REVIEWER_JWT:?path to a Vault-dedicated ServiceAccount token with the TokenRequest permissions documented in docs/TALK-NOTES.md}"
 
 echo "--- database secrets engine ---"
