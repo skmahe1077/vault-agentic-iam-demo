@@ -7,17 +7,29 @@ at the bottom); nothing else in this script changes either way.
 
 ## Before you go on stage (not shown live)
 
+This demo targets **HCP Vault Dedicated** exclusively -- no local Vault container, no Vault
+Enterprise license.
+
 ```bash
 cp .env.example .env            # fill in ORDERS_DB_ADMIN_PASSWORD
-docker compose up -d
-export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=root
+docker compose up -d            # orders-db only
+export VAULT_ADDR=https://<cluster-id>.vault.<region>.aws.hashicorp.cloud:8200
+export VAULT_NAMESPACE=admin
+vault login                     # token/OIDC/userpass -- whatever this cluster's auth method is
 
 ./scripts/bootstrap-kind.sh
-docker network connect kind vault-agentic-iam
 kubectl --context kind-vault-agentic-iam apply -f k8s_manifests/vault-k8s-secrets-engine-rbac.yaml
+```
 
-./vault-config/00-enable-audit.sh
+Before the next step: HCP Vault Dedicated must have a network path to reach the `kind`
+cluster's API server and `orders-db` -- a tunnel (ngrok/cloudflared) or HVN-peered VPC, since
+there's no local Vault container to `docker network connect` into `kind`'s network anymore.
+`K8S_HOST` below has to resolve to something reachable *from HCP's network*.
 
+`./vault-config/00-enable-audit.sh` is a known gap against HCP (no local `file` audit device
+there -- see docs/TALK-NOTES.md); beat 6 is currently unavailable on this path.
+
+```bash
 mkdir -p /tmp/vault-k8s-config
 kubectl --context kind-vault-agentic-iam config view --raw \
   -o jsonpath='{.clusters[?(@.name=="kind-vault-agentic-iam")].cluster.certificate-authority-data}' \
@@ -26,7 +38,7 @@ kubectl --context kind-vault-agentic-iam -n vault create token vault --duration=
   > /tmp/vault-k8s-config/reviewer.jwt
 
 ORDERS_DB_ADMIN_PASSWORD=changeme-local-only \
-K8S_HOST="https://vault-agentic-iam-control-plane:6443" \
+K8S_HOST="<tunnel-or-peered-endpoint-for-kind-control-plane>:6443" \
 K8S_CA_CERT=/tmp/vault-k8s-config/ca.pem \
 K8S_REVIEWER_JWT=/tmp/vault-k8s-config/reviewer.jwt \
   ./vault-config/01-enable-secrets-engines.sh
@@ -46,21 +58,13 @@ vault secrets list
 vault read agent-registry/registration/entity-id/"$(vault read -field=id identity/entity/name/sre-incident-agent)"
 ```
 
-For a genuinely clean audit log on stage, also do this right before going on (everything
-above produces audit noise during setup):
-
-```bash
-vault audit disable file
-rm -f docker-compose/vault/logs/audit.log
-vault audit enable file file_path=/vault/logs/audit.log
-```
-
 ## On stage — the six beats
 
 Export these once per terminal session (keeps every beat's commands short):
 
 ```bash
-export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=root
+export VAULT_ADDR=https://<cluster-id>.vault.<region>.aws.hashicorp.cloud:8200
+export VAULT_NAMESPACE=admin
 export CLUSTER_NAME=vault-agentic-iam
 export MOCK_IDP_ISSUER="https://test-tenant.verify.ibm.com/oidc/endpoint/default"
 export ONCALL_ENGINEER_SUBJECT="oncall-engineer-test-subject"
@@ -124,6 +128,10 @@ This single script runs all three beats:
 
 ### Beat 6 — audit closes the loop
 
+Known gap against HCP Vault Dedicated (reads a local `file` audit device that doesn't exist
+there -- see docs/TALK-NOTES.md). Omit this beat until that's resolved, or narrate the
+mechanism verbally using the fields below.
+
 ```bash
 ./scripts/show-audit-trail.sh
 ```
@@ -137,10 +145,9 @@ default. Every action, scoped, expiring, and traceable back to a person."
 ```bash
 ./scripts/reset.sh
 ```
-Clears leaked DB connections and restores checkout-service's probes. Does not clear the
-audit log or revoke outstanding leases — do that separately if a fully clean state is needed
-(see the audit-log reset above; `vault lease revoke -prefix database/` /
-`kubernetes/` for leases).
+Clears leaked DB connections and restores checkout-service's probes. Does not revoke
+outstanding leases — do that separately if a fully clean state is needed (`vault lease revoke
+-prefix database/` / `kubernetes/`).
 
 ## Switching to the real IBM Verify tenant
 

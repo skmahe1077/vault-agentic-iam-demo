@@ -1,30 +1,8 @@
 services:
-  vault:
-    # 2.2-ent, not 1.21-ent: license_entitlement (needed for the IBM Passport
-    # Advantage-issued license) is unsupported before Vault 2.0, and
-    # Agent Registry/OBO/RAR need 2.2 specifically. See docs/TALK-NOTES.md.
-    image: hashicorp/vault-enterprise:2.2-ent
-    container_name: vault-agentic-iam
-    cap_add:
-      - IPC_LOCK
-    ports:
-      - "8200:8200"
-    environment:
-      VAULT_LICENSE_PATH: /vault/license/vault.hclic
-      VAULT_DEV_ROOT_TOKEN_ID: root
-      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
-      VAULT_LOG_LEVEL: info
-    volumes:
-      - ./docker-compose/vault/logs:/vault/logs
-      - ./docker-compose/vault/config:/vault/config
-      - ./vault_techxchange_Mahendran-Selvakumar.hclic:/vault/license/vault.hclic:ro
-    command: ["server", "-dev", "-config=/vault/config/license-entitlement.hcl"]
-    healthcheck:
-      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
+  # No Vault service here -- this demo targets HCP Vault Dedicated
+  # exclusively (Agent Registry already provisioned there; HCP manages
+  # licensing/entitlement itself). See "Running against HCP Vault
+  # Dedicated" in README.md for VAULT_ADDR/VAULT_NAMESPACE/vault login.
   orders-db:
     image: postgres:16-alpine
     container_name: orders-db

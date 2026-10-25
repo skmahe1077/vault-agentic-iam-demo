@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Enables and configures the two secrets engines the incident-response
-# agent draws ephemeral grants from. Run against the local docker-compose
-# Vault (export VAULT_ADDR=http://127.0.0.1:8200, VAULT_TOKEN=root).
+# agent draws ephemeral grants from. Run against HCP Vault Dedicated
+# (export VAULT_ADDR/VAULT_NAMESPACE, then `vault login`). HCP Vault
+# Dedicated must have network reachability to K8S_HOST below -- see
+# "Running against HCP Vault Dedicated" in README.md.
 set -euo pipefail
 
 : "${ORDERS_DB_ADMIN_PASSWORD:?set to the orders-db admin password}"

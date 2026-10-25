@@ -18,7 +18,10 @@ Two variants of the same incident, side by side:
 
 ```bash
 cp .env.example .env    # fill in ORDERS_DB_ADMIN_PASSWORD
-docker compose up -d
+docker compose up -d    # orders-db only -- Vault itself is HCP Vault Dedicated, not local
+export VAULT_ADDR=https://<cluster-id>.vault.<region>.aws.hashicorp.cloud:8200
+export VAULT_NAMESPACE=admin
+vault login              # token/OIDC/userpass -- whatever your cluster's auth method is
 ```
 
 Then follow **[docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)** for the full presenter run-of-show
@@ -26,12 +29,30 @@ Then follow **[docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)** for the full presente
 build notes, every bug found/fixed along the way, and the mapping from the talk's abstract to
 the actual mechanism in this repo.
 
+## Running against HCP Vault Dedicated
+
+This demo is built exclusively against **HCP Vault Dedicated** (Agent Registry already
+provisioned there) — there is no local Vault container or Vault Enterprise license in this
+repo. `vault-config/*.sh` and `agent/secure/run.sh` just read
+`VAULT_ADDR`/`VAULT_TOKEN`/`VAULT_NAMESPACE` from the environment, so pointing them at your
+HCP cluster (see Quick start above) is the entire setup.
+
+Two things to arrange before the `vault-config/01-enable-secrets-engines.sh` step, since Vault
+runs in HashiCorp's own cloud, not on the same docker network as `orders-db`/`kind`:
+
+- **Reachability**: HCP Vault Dedicated needs a network path to reach `orders-db` and the
+  `kind` cluster's API server — a tunnel (ngrok/cloudflared) for quick rehearsal, or HVN
+  peering to a VPC that hosts them for something closer to production. Whatever `K8S_HOST`
+  resolves to must be reachable *from HCP's network*, not just from your laptop.
+- **Audit trail (beat 6)**: `scripts/show-audit-trail.sh` tails a local `file` audit device,
+  which isn't how HCP Vault Dedicated exposes audit data (it uses HCP's own audit log
+  streaming to an external sink instead). This is a known gap — see docs/TALK-NOTES.md.
+
 ## Prerequisites
 
 - Docker, `kind`, `kubectl`, the `vault` CLI, `jq`
-- A **Vault Enterprise** license (this repo was built against an IBM Passport Advantage
-  `platform-standard` license — see TALK-NOTES for the `license_entitlement` config that
-  requires)
+- An **HCP Vault Dedicated** cluster with Agent Registry available (confirm the cluster's
+  Vault version supports Agent Registry/OBO/RAR)
 - An IBM Verify tenant for the real delegated-authorization flow — or use **mock-IdP mode**
   (`scripts/dev/`) to rehearse the entire flow for real without one; see DEMO-SCRIPT.md
 
@@ -39,7 +60,7 @@ the actual mechanism in this repo.
 
 | Path | What |
 |---|---|
-| `docker-compose.yml` | Vault Enterprise (dev mode) + Postgres (`orders` DB) |
+| `docker-compose.yml` | Postgres (`orders` DB) only -- Vault is HCP Vault Dedicated, not local |
 | `k8s_manifests/` | checkout-service/billing-service + RBAC for the kind cluster |
 | `vault-config/` | Secrets engines, policies, Agent Registry registration, IBM Verify config |
 | `agent/insecure/`, `agent/secure/` | The two agent variants |

@@ -65,32 +65,33 @@ grant pre-exists; both are requested, scoped, and expire per-incident.
 
 ## Run order
 
-**Confirmed working end-to-end 2026-10-18** except the IBM Verify OBO exchange itself (see
-"Known rough edges" below).
+**Confirmed working end-to-end 2026-10-18** against local dev-mode Vault (since retired --
+see "HCP Vault Dedicated as the real demo target" below) except the IBM Verify OBO exchange
+itself (see "Known rough edges" below).
 
 ```bash
 cp .env.example .env            # fill in ORDERS_DB_ADMIN_PASSWORD
-                                 # Vault license is read from the mounted .hclic file (docker-compose.yml)
-docker compose up -d
-export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=root
+docker compose up -d            # orders-db only
+export VAULT_ADDR=https://<cluster-id>.vault.<region>.aws.hashicorp.cloud:8200
+export VAULT_NAMESPACE=admin
+vault login                     # token/OIDC/userpass -- whatever this cluster's auth method is
 
 # Creates a dedicated kind cluster -- CLUSTER_NAME defaults to
 # vault-agentic-iam, won't touch any of your other kind clusters.
 ./scripts/bootstrap-kind.sh
-
-# Vault's container needs to be on the same docker network as the kind
-# control-plane container to reach its API server.
-docker network connect kind vault-agentic-iam
 
 # Vault's own RBAC for managing the K8s API (ServiceAccount "vault" in
 # namespace "vault", plus `bind` grants scoped to the two target Roles --
 # see "Kubernetes secrets engine wiring" below for why).
 kubectl --context kind-vault-agentic-iam apply -f k8s_manifests/vault-k8s-secrets-engine-rbac.yaml
 
-./vault-config/00-enable-audit.sh
+# HCP Vault Dedicated needs a network path to K8S_HOST and orders-db below
+# -- a tunnel or HVN-peered VPC, since there's no local Vault container to
+# put on the same docker network as kind anymore. ./vault-config/00-enable-
+# audit.sh is a known gap against HCP (see below) -- omitted here.
 
 ORDERS_DB_ADMIN_PASSWORD=... \
-K8S_HOST="https://vault-agentic-iam-control-plane:6443" \
+K8S_HOST="<tunnel-or-peered-endpoint-for-kind-control-plane>:6443" \
 K8S_CA_CERT=/tmp/vault-k8s-config/ca.pem \
 K8S_REVIEWER_JWT=/tmp/vault-k8s-config/reviewer.jwt \
   ./vault-config/01-enable-secrets-engines.sh
@@ -108,7 +109,7 @@ eval "$(./scripts/create-insecure-demo-credentials.sh | grep '^export')"
 IBM_VERIFY_TOKEN_ENDPOINT=... ONCALL_SUBJECT_TOKEN=... SRE_AGENT_ACTOR_TOKEN=... \
   ./agent/secure/run.sh                          # beats 2-5 (register already done above)
 
-./scripts/show-audit-trail.sh                    # beat 6
+./scripts/show-audit-trail.sh                    # beat 6 -- known gap against HCP, see below
 
 ./scripts/reset.sh                               # between rehearsals
 ```
@@ -197,30 +198,60 @@ Verify CLI, so they're not scripted:
    or Vault returns a misleading "no alias found" error despite the JWT
    itself validating fine.
 
-## Vault license + image (resolved 2026-10-18)
+## Vault license + image (retired 2026-10-24 -- local dev-mode Vault removed)
 
-`vault_techxchange_Mahendran-Selvakumar.hclic` is an **IBM Passport Advantage**
-license (edition `platform-standard`), not a standard HashiCorp-issued one.
-Two things are required for it to validate, both now wired into
-docker-compose.yml:
+**Historical note, no longer applicable.** Early builds of this demo ran Vault locally in
+dev mode via docker-compose, licensed with `vault_techxchange_Mahendran-Selvakumar.hclic` (an
+**IBM Passport Advantage** license, edition `platform-standard`). That container, the
+`*.hclic` file, the `license_entitlement` stanza (`docker-compose/vault/config/license-
+entitlement.hcl`), and the `hashicorp/vault-enterprise:2.2-ent` image pin have all been
+removed from this repo — the demo now runs exclusively against **HCP Vault Dedicated**, which
+manages its own licensing/entitlement. Kept below only as a record of what was debugged, in
+case local dev-mode Vault is ever reintroduced:
 
-1. Image must be **`hashicorp/vault-enterprise:2.2-ent`**, not `1.21-ent`.
+1. Image had to be **`hashicorp/vault-enterprise:2.2-ent`**, not `1.21-ent`.
    `license_entitlement` config support and Agentic IAM (Agent Registry/OBO/RAR)
    both need 2.x; 1.21 rejects the license outright (`invalid module:
    "platform-standard"`) and doesn't recognize the stanza at all (`unknown or
    unsupported field license_entitlement`).
-2. A `license_entitlement { edition = "platform-standard" }` stanza
-   (`docker-compose/vault/config/license-entitlement.hcl`), merged in via
+2. A `license_entitlement { edition = "platform-standard" }` stanza, merged in via
    `-config=` alongside `-dev` on the command line.
+3. Don't pass `-dev-plugin-dir=/vault/plugins` unless that directory is actually mounted — an
+   unmounted plugin dir made the container unseal fully, print all its mount logs, then
+   exit(1) silently with no banner and no visible panic. Dropping the flag (this demo uses no
+   external plugins) fixed it.
 
-Also: don't pass `-dev-plugin-dir=/vault/plugins` unless that directory is
-actually mounted — an unmounted plugin dir made the container unseal fully,
-print all its mount logs, then exit(1) silently with no banner and no visible
-panic. Dropping the flag (this demo uses no external plugins) fixed it.
+Confirmed live at the time (local dev-mode Vault, now retired): `vault status` reported
+`Version 2.2.0+ent`, `agent-registry/` showed up in `vault secrets list` as a real
+`agent_registry`-type mount, file audit device enabled at `/vault/logs/audit.log`.
 
-Confirmed live: `vault status` reports `Version 2.2.0+ent`, `agent-registry/`
-shows up in `vault secrets list` as a real `agent_registry`-type mount, file
-audit device enabled at `/vault/logs/audit.log`.
+## HCP Vault Dedicated as the real demo target (2026-10-24)
+
+The actual demo target is an **HCP Vault Dedicated** cluster with Agent Registry already
+provisioned — HCP manages licensing/entitlement itself, so none of the retired license/image
+concerns above apply; just confirm the cluster's Vault version supports Agent Registry/OBO/RAR
+(same 2.x requirement as above).
+
+What carries over unchanged: every `vault-config/*.sh` script and `agent/secure/run.sh` only
+ever touch Vault through `VAULT_ADDR`/`VAULT_TOKEN`/`VAULT_NAMESPACE` — there's no
+Vault-target-specific logic in any of them. Pointing `VAULT_ADDR` at the HCP cluster, setting
+`VAULT_NAMESPACE=admin`, and authenticating via `vault login` is the entire swap.
+
+What doesn't carry over:
+
+- **No `docker network connect kind vault-agentic-iam` trick.** That only worked because local
+  dev-mode Vault was itself a container on the same docker bridge network as `kind`. HCP Vault
+  Dedicated runs in HashiCorp's own cloud (an HVN) — `K8S_HOST` (and the Postgres host for the
+  database secrets engine) must be reachable *from HCP's network*, not just the laptop running
+  these scripts. Options: a tunnel (ngrok/cloudflared) exposing both for quick rehearsal, or
+  HVN peering to a VPC that hosts them for something closer to production. Neither is wired up
+  in this repo yet — treat it as a prerequisite to arrange per-environment, not a script flag.
+- **Beat 6 (`scripts/show-audit-trail.sh`) doesn't work as-is.** It tails a local `file` audit
+  device at `docker-compose/vault/logs/audit.log`, which only existed because local dev-mode
+  Vault mounted that path from the container — now removed. HCP Vault Dedicated has no
+  equivalent local filesystem to mount — audit instead goes through HCP's own audit log
+  streaming to an external sink (CloudWatch/Datadog/etc., configured in the HCP portal). Known
+  gap: this repo doesn't yet adapt beat 6 to query a streamed sink.
 
 ## Agent Registry + identity wiring (resolved 2026-10-18)
 
