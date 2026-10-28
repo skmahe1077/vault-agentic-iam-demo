@@ -11,6 +11,10 @@ K8S_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.ser
 EPHEMERAL_KUBECONFIG=$("${SCRIPT_DIR}/../scripts/lib/ephemeral-kubeconfig.sh" "${STATIC_K8S_TOKEN}" "${K8S_SERVER}")
 
 echo
+echo "\$ vault read agent-registry/registration/display-name/sre-incident-agent-insecure"
+vault read agent-registry/registration/display-name/sre-incident-agent-insecure || true
+
+echo
 echo "\$ psql -U orders_admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'orders';\""
 "${SCRIPT_DIR}/../scripts/lib/orders-psql.sh" orders_admin "${STATIC_ORDERS_DB_PASSWORD}" -c \
   "SELECT count(*) AS connections FROM pg_stat_activity WHERE datname = 'orders';"
