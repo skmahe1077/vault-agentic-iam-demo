@@ -151,14 +151,6 @@ Same `< /dev/null` trick works here for a non-interactive run.
 
 Both scripts share `agent/secure-agent.sh`.
 
-**UI instead of terminal — don't.** Explored this at length: Agent Registry has no page in
-this Vault UI build, the Leases list page throws a JS error on this cluster, and even with
-both working, the ceiling-denial moment can't be shown in the UI at all — it requires being
-authenticated *as* the ephemeral delegation token (not the admin session), which means
-pasting a JWT into the login box within its ~60-300s window, live, which isn't realistic to
-pull off. Terminal is the reliable path; see docs/TALK-NOTES.md "UI walkthrough: explored, not
-worth it" for the full account if this comes up again.
-
 ## Reset between rehearsals
 
 ```bash
