@@ -56,14 +56,6 @@ banner() {
   echo "============================================================"
 }
 
-banner "THE GAP"
-cat <<'EOF'
-AI agents are entering infrastructure pipelines, but traditional IAM was
-built for predictable users and workflows -- not autonomous actors that
-request access, use tools, and act on behalf of humans.
-EOF
-pause
-
 banner "SCENE: checkout-service is degrading"
 "${SCRIPT_DIR}/../scripts/trigger-incident.sh"
 pause
@@ -77,10 +69,3 @@ pause
 
 banner "2, 3, 4. DELEGATED AUTHORIZATION, CEILING, EPHEMERAL GRANT"
 "${SCRIPT_DIR}/secure/run.sh"
-
-banner "THE OUTCOME"
-cat <<'EOF'
-Every grant above was scoped to one task, delegated on behalf of a specific
-human, and already expiring or expired. Controlled, traceable, and auditable
--- by construction, not by policy you hope holds.
-EOF

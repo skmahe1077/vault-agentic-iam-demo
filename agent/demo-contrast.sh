@@ -47,22 +47,3 @@ pause
 banner "THE FIX: delegated, ceiling-capped, ephemeral authorization"
 "${SCRIPT_DIR}/../scripts/trigger-incident.sh"
 "${SCRIPT_DIR}/secure/run.sh"
-pause
-
-banner "THE DIFFERENCE"
-cat <<'EOF'
-Same incident, same two actions needed (diagnose + fix) -- fixed twice.
-
-                      Insecure (standing)          Secure (ephemeral)
-Diagnose              static password,              credential minted fresh,
-                      works forever                 expires in under a minute
-Fix                   static K8s token,              token scoped to exactly
-                      broad RBAC                     this action, same TTL
-Overreach             SUCCEEDED -- read billing      403 permission denied --
-                      cards, restarted billing-      same request, blocked by
-                      service, neither was asked     the ceiling
-                      for
-Accountability        one shared credential did      every grant delegated on
-                      all four actions, no           behalf of a specific
-                      identity attached               human, tied to one task
-EOF

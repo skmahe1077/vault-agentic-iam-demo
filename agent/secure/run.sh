@@ -65,7 +65,3 @@ rm -f "${EPHEMERAL_KUBECONFIG}"
 # Same capping as the DB credential above -- role default is 10m, actual
 # issued TTL is min(that, delegation JWT's remaining validity).
 echo "(token expires in ${K8S_TTL}s, RBAC-limited to get/list/patch on checkout-service only)"
-
-echo
-echo "Diagnose + fix ran on task-scoped, short-lived, single-use grants. The" \
-     "ceiling held even against a request the human approver's own policy permits."

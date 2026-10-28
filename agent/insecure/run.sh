@@ -42,7 +42,3 @@ kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
   -n prod-billing rollout restart deployment/billing-service
 
 rm -f "${EPHEMERAL_KUBECONFIG}"
-
-echo
-echo "Same credential did all four actions. No identity, no task scope, no" \
-     "TTL, no audit trail tying any of this back to the checkout-service incident."
