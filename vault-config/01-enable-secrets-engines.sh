@@ -26,7 +26,7 @@ vault write database/config/orders-db \
 vault write database/roles/readonly-orders \
     db_name=orders-db \
     creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT SELECT ON orders TO \"{{name}}\";" \
-    default_ttl="3m" \
+    default_ttl="5m" \
     max_ttl="10m"
 
 echo "--- kubernetes secrets engine ---"
