@@ -87,8 +87,11 @@ vault read agent-registry/registration/entity-id/"$(vault read -field=id identit
 ## Running the demo — one script, one continuous story
 
 No standing-credential anti-pattern in this cut of the talk — the abstract only promises the
-solution, so the demo only shows the solution, end to end. (`agent/insecure/run.sh` still
-exists if that contrast is ever wanted for a different version of this talk.)
+solution, so `agent/demo.sh` only shows the solution, end to end. If you want the audience to
+see the anti-pattern fail before the fix holds, run `agent/demo-contrast.sh` instead — same
+incident, fixed twice (standing credential, then Agentic IAM), narrated inline, self-sufficient
+the same way. Both scripts share `agent/secure/run.sh`; `demo-contrast.sh` just also runs
+`agent/insecure/run.sh` first.
 
 **No manual export block needed** — both `scripts/preflight-check.sh` and `agent/demo.sh` are
 self-sufficient: they source `/tmp/vault-session.env` (VAULT_ADDR/VAULT_NAMESPACE/VAULT_TOKEN,

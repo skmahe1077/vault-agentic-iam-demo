@@ -11,8 +11,9 @@ grant to one task and expires it right after.
 
 `agent/demo.sh` runs the whole thing as one continuous story, matching the talk abstract
 exactly: identity → delegated authorization → ceiling caps blast radius → ephemeral grant does
-the real fix. `agent/insecure/` is kept separately — a static, standing credential that can
-touch anything — for a different cut of the talk that wants that contrast explicitly.
+the real fix, solution only. `agent/demo-contrast.sh` runs the same incident twice back to
+back -- once with a standing credential (`agent/insecure/`), once with Vault Agentic IAM -- so
+the difference shows up in the actual command output instead of narration.
 
 ## Quick start
 
@@ -101,8 +102,9 @@ here). This is a known gap — see docs/TALK-NOTES.md.
 | `sql/` | orders-db schema, loaded by `scripts/load-orders-schema.sh` |
 | `k8s_manifests/` | checkout-service/billing-service + RBAC for the EKS cluster, orders-db-proxy |
 | `vault-config/` | Secrets engines, policies, Agent Registry registration, IBM Verify config |
-| `agent/demo.sh` | The single demo -- identity, delegated auth, ceiling, ephemeral grant |
-| `agent/insecure/`, `agent/secure/` | The two agent variants `demo.sh` is built from |
+| `agent/demo.sh` | Solution-only demo -- identity, delegated auth, ceiling, ephemeral grant |
+| `agent/demo-contrast.sh` | Same incident fixed twice -- standing credential, then Agentic IAM |
+| `agent/insecure/`, `agent/secure/` | The two agent variants the demo scripts are built from |
 | `scripts/preflight-check.sh` | Run before the demo -- verifies and auto-fixes the environment |
 | `scripts/` | Incident simulation, reset, audit correlation, ephemeral-kubeconfig/orders-psql helpers |
 | `scripts/dev/` | Mock IdP for rehearsing OBO+RAR without a real IBM Verify tenant |
