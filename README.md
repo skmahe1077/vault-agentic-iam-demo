@@ -11,7 +11,7 @@ grant to one task and expires it right after.
 
 `agent/demo.sh` runs the whole thing as one continuous story, matching the talk abstract
 exactly: identity → delegated authorization → ceiling caps blast radius → ephemeral grant does
-the real fix, solution only. `agent/demo-secure-vs-insecure.sh` runs the same incident twice,
+the real fix, solution only. `agent/incident-response-demo.sh` runs the same incident twice,
 back to back -- once with a standing credential (`agent/insecure-agent.sh`), once with Vault
 Agentic IAM -- so the difference shows up in the actual command output instead of narration.
 
@@ -103,7 +103,7 @@ here). This is a known gap — see docs/TALK-NOTES.md.
 | `k8s_manifests/` | checkout-service/billing-service + RBAC for the EKS cluster, orders-db-proxy |
 | `vault-config/` | Secrets engines, policies, Agent Registry registration, IBM Verify config |
 | `agent/demo.sh` | Solution-only demo -- identity, delegated auth, ceiling, ephemeral grant |
-| `agent/demo-secure-vs-insecure.sh` | Same incident fixed twice -- standing credential, then Agentic IAM |
+| `agent/incident-response-demo.sh` | Same incident fixed twice -- standing credential, then Agentic IAM |
 | `agent/insecure-agent.sh`, `agent/secure-agent.sh` | The two agent variants the demo scripts are built from |
 | `scripts/preflight-check.sh` | Run before the demo -- verifies and auto-fixes the environment |
 | `scripts/` | Incident simulation, reset, audit correlation, ephemeral-kubeconfig/orders-psql helpers |

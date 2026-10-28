@@ -89,7 +89,7 @@ Two scripts, both self-sufficient, both printing nothing but real commands and t
 output -- no narration, no banners. Say the talking points yourself, live, over the output;
 the terminal only shows what actually happened.
 
-`scripts/preflight-check.sh`, `agent/demo.sh`, and `agent/demo-secure-vs-insecure.sh` each
+`scripts/preflight-check.sh`, `agent/demo.sh`, and `agent/incident-response-demo.sh` each
 source `/tmp/vault-session.env` (VAULT_ADDR/VAULT_NAMESPACE/VAULT_TOKEN, written once by
 `terraform apply`) and `.env` (ORDERS_DB_ADMIN_PASSWORD) themselves, and default the
 mock-IdP values if not already set. From any fresh terminal on this machine, just `cd` into
@@ -131,11 +131,11 @@ Pauses for enter between the three sections above (`pause()` in the script) so y
 over each one -- run non-interactively instead (e.g. for a recording) with
 `./agent/demo.sh < /dev/null`.
 
-**`agent/demo-secure-vs-insecure.sh`** -- the same incident, fixed twice, for direct
+**`agent/incident-response-demo.sh`** -- the same incident, fixed twice, for direct
 contrast:
 
 ```bash
-./agent/demo-secure-vs-insecure.sh
+./agent/incident-response-demo.sh
 ```
 
 1. Fires the incident, then runs `agent/insecure-agent.sh`: opens with
