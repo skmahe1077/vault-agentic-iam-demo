@@ -46,4 +46,10 @@ echo
 echo "\$ kubectl -n prod-checkout rollout restart deployment/checkout-service"
 kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
   -n prod-checkout rollout restart deployment/checkout-service
+
+echo
+echo "\$ kubectl -n prod-checkout get deployment checkout-service"
+kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
+  -n prod-checkout get deployment checkout-service
+
 rm -f "${EPHEMERAL_KUBECONFIG}"
