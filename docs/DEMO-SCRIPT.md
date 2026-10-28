@@ -1,14 +1,12 @@
 # Demo script — TLK-2725
 
 A presenter run-of-show: what to type, in what order, and what to say. Rehearsed end-to-end
-on 2026-10-18 using the mock IdP (`MOCK_IDP_ISSUER` mode) standing in for IBM Verify — swap
-to the real tenant's env vars once validated (see "Switching to the real IBM Verify tenant"
-at the bottom); nothing else in this script changes either way. Re-rehearsed end-to-end
-against **real** AWS + HCP infrastructure (EKS, RDS, HCP Vault Dedicated v2.1.2, HVN peering)
-on 2026-10-27 — run well over a dozen times that night without a single failure. Every command
-below is copy-pasteable as written.
+on 2026-10-18 using the mock IdP (`MOCK_IDP_ISSUER` mode) standing in for IBM Verify. Re-
+rehearsed end-to-end against **real** AWS + HCP infrastructure (EKS, RDS, HCP Vault Dedicated
+v2.1.2, HVN peering) on 2026-10-27 — run well over a dozen times that night without a single
+failure. Every command below is copy-pasteable as written.
 
-## Before you go on stage (not shown live)
+## Setup steps (run once, not part of the demo itself)
 
 This demo targets **HCP Vault Dedicated** exclusively -- no local Vault container, no Vault
 Enterprise license. `terraform/` provisions the Vault cluster itself, a real **EKS** cluster
@@ -83,13 +81,13 @@ export SRE_AGENT_SUBJECT="sre-incident-agent-test-subject"
 IBM_VERIFY_ISSUER="${MOCK_IDP_ISSUER}" \
   ./vault-config/03-register-identities-and-agent.sh
 
-# Sanity check everything is live before walking on stage:
+# Sanity check everything is live before running the demo:
 vault status
 vault secrets list
 vault read agent-registry/registration/entity-id/"$(vault read -field=id identity/entity/name/sre-incident-agent)"
 ```
 
-## On stage — one script, one continuous story
+## Running the demo — one script, one continuous story
 
 No standing-credential anti-pattern in this cut of the talk — the abstract only promises the
 solution, so the demo only shows the solution, end to end. (`agent/insecure/run.sh` still
@@ -108,7 +106,7 @@ export ONCALL_ENGINEER_SUBJECT="oncall-engineer-test-subject"
 export SRE_AGENT_SUBJECT="sre-incident-agent-test-subject"
 ```
 
-**Right before you walk on stage**, run the preflight check — it verifies Vault, the Agent
+**Right before running the demo**, run the preflight check — it verifies Vault, the Agent
 Registry entry, checkout-service's pods, the orders-db-proxy port-forward, and the mock-IdP
 tunnel, and auto-fixes the two that have been seen dropping silently between rehearsals (the
 port-forward and the tunnel):
@@ -161,22 +159,9 @@ run it non-interactively instead (e.g. in a recording) with `./agent/live-demo.s
 this Vault UI build, the Leases list page throws a JS error on this cluster, and even with
 both working, the ceiling-denial moment can't be shown in the UI at all — it requires being
 authenticated *as* the ephemeral delegation token (not the admin session), which means
-pasting a JWT into the login box within its ~60-300s window, live, which isn't realistic on
-stage. Terminal is the reliable path; see docs/TALK-NOTES.md "UI walkthrough: explored, not
+pasting a JWT into the login box within its ~60-300s window, live, which isn't realistic to
+pull off. Terminal is the reliable path; see docs/TALK-NOTES.md "UI walkthrough: explored, not
 worth it" for the full account if this comes up again.
-
-### Optional — the delegation itself is real, against the actual IBM Verify tenant
-
-```bash
-./scripts/dev/real-ibmverify-obo-demo.sh
-```
-Requires `.env.ibmverify.local` filled in and the one-time `verify-real` profile +
-`*-real` entity-alias setup from `docs/TALK-NOTES.md`. Say: "this isn't simulated — that's a
-real client-credentials grant, a real password grant, and a real RFC 8693 token exchange
-against our actual IBM Verify tenant. Vault resolves both identities from it for real." Then
-point out in the output that it's missing the RAR scoping the main demo shows — explain that
-piece is demonstrated separately because of a gap in HashiCorp's own current IBM Verify
-integration guide, not a limitation of Vault itself.
 
 ### Optional — audit closes the loop
 
@@ -200,19 +185,3 @@ default. Every action, scoped, expiring, and traceable back to a person."
 Clears leaked DB connections and restores checkout-service's probes. Does not revoke
 outstanding leases — do that separately if a fully clean state is needed (`vault lease revoke
 -prefix database/` / `kubernetes/`).
-
-## Switching to the real IBM Verify tenant
-
-Nothing in `agent/secure/run.sh` or this script changes. Only swap the env vars in the setup
-step and in the "export once per session" block:
-
-```bash
-unset MOCK_IDP_ISSUER ONCALL_ENGINEER_SUBJECT SRE_AGENT_SUBJECT
-export IBM_VERIFY_TOKEN_ENDPOINT="https://<tenant>.verify.ibm.com/oauth2/token"
-export ONCALL_SUBJECT_TOKEN="<real on-call engineer access token>"
-export SRE_AGENT_ACTOR_TOKEN="<real sre-incident-agent access token>"
-```
-`agent/secure/request-delegation-token.sh` picks the real RFC 8693 token-exchange path
-automatically once `MOCK_IDP_ISSUER` is unset. Validate this exchange against the real tenant
-*before* the talk — it's the one leg of this whole demo that hasn't been proven live (see
-docs/TALK-NOTES.md "Known rough edges").
