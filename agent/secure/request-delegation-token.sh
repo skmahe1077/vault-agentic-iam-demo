@@ -23,8 +23,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # validated to use the real token-exchange call below instead. Either way
 # agent/secure/run.sh itself never changes.
 if [ -n "${MOCK_IDP_ISSUER:-}" ]; then
-  : "${ONCALL_ENGINEER_SUBJECT:?the on-call engineer's mock-IdP sub, matching vault-config/03}"
-  : "${SRE_AGENT_SUBJECT:?sre-incident-agent's mock-IdP sub, matching vault-config/03}"
+  : "${ONCALL_ENGINEER_SUBJECT:?the on-call engineers mock-IdP sub, matching vault-config/03}"
+  : "${SRE_AGENT_SUBJECT:?sre-incident-agents mock-IdP sub, matching vault-config/03}"
   python3 "${SCRIPT_DIR}/../../scripts/dev/mint_rar_jwt.py" \
     "${MOCK_IDP_ISSUER}" "${ONCALL_ENGINEER_SUBJECT}" "${SRE_AGENT_SUBJECT}" \
     "${RAR_PATH}" "${RAR_CAPABILITY}"

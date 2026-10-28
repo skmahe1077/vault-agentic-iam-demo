@@ -10,10 +10,14 @@ set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-vault-agentic-iam}"
 LEAK_CONN_COUNT="${LEAK_CONN_COUNT:-18}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+: "${ORDERS_DB_ADMIN_PASSWORD:?set to the orders-db admin password (from .env)}"
 
 echo "Opening ${LEAK_CONN_COUNT} idle connections against orders-db..."
 for i in $(seq 1 "${LEAK_CONN_COUNT}"); do
-  docker exec -d orders-db psql -U orders_admin -d orders -c "SELECT pg_sleep(600);"
+  "${SCRIPT_DIR}/lib/orders-psql.sh" orders_admin "${ORDERS_DB_ADMIN_PASSWORD}" \
+    -c "SELECT pg_sleep(600);" &
 done
 
 echo "Breaking checkout-service readiness probe to induce CrashLoopBackOff..."

@@ -8,45 +8,53 @@ at the bottom); nothing else in this script changes either way.
 ## Before you go on stage (not shown live)
 
 This demo targets **HCP Vault Dedicated** exclusively -- no local Vault container, no Vault
-Enterprise license. The Kubernetes side runs on a real **EKS** cluster in AWS (replacing the
-local `kind` cluster used earlier), provisioned by `terraform/`, so HCP Vault Dedicated can
-reach its API server directly over a public endpoint -- no tunnel, no HVN peering.
+Enterprise license. `terraform/` provisions the Vault cluster itself, a real **EKS** cluster
+(replacing the local `kind` cluster used earlier), and `orders-db` on **RDS**. HCP Vault
+Dedicated reaches EKS's public endpoint directly over the internet (IAM+RBAC authenticated --
+there's no static egress-IP list to lock it down to) and reaches RDS privately over an HVN
+peering connection -- see "Running against HCP Vault Dedicated" in README.md for why those two
+paths differ.
 
 ```bash
 cp .env.example .env            # fill in ORDERS_DB_ADMIN_PASSWORD
-docker compose up -d            # orders-db only
-export VAULT_ADDR=https://<cluster-id>.vault.<region>.aws.hashicorp.cloud:8200
-export VAULT_NAMESPACE=admin
-vault login                     # token/OIDC/userpass -- whatever this cluster's auth method is
+export TF_VAR_orders_db_admin_password="$(grep ORDERS_DB_ADMIN_PASSWORD .env | cut -d= -f2)"
 
 cd terraform
 terraform init
-terraform apply \
-  -var='eks_public_access_cidrs=["<your-ip>/32","<HCP Vault Dedicated egress CIDRs -- see HashiCorp HCP network docs>"]'
+cat > terraform.tfvars <<EOF
+presenter_ip_cidr = "$(curl -s https://checkip.amazonaws.com)/32"
+hcp_project_id    = "<your HCP project ID -- \`hcp profile display\`>"
+EOF
+terraform apply
 cd ..
 
-export AWS_REGION=us-east-1     # match terraform/variables.tf aws_region
-./scripts/bootstrap-eks.sh
-kubectl --context vault-agentic-iam apply -f k8s_manifests/vault-k8s-secrets-engine-rbac.yaml
+export AWS_REGION=us-west-2     # match terraform/variables.tf aws_region / the HVN's region
+./scripts/bootstrap-eks.sh      # applies manifests incl. vault-k8s-secrets-engine-rbac.yaml,
+                                 # starts the orders-db port-forward on 127.0.0.1:5433
+./scripts/load-orders-schema.sh
+
+export VAULT_ADDR="$(terraform -chdir=terraform output -raw vault_public_endpoint_url)"
+export VAULT_NAMESPACE=admin
+vault login                     # token/OIDC/userpass -- whatever this cluster's auth method is
 ```
 
 `./vault-config/00-enable-audit.sh` is a known gap against HCP (no local `file` audit device
 there -- see docs/TALK-NOTES.md); beat 6 is currently unavailable on this path.
 
-`orders-db` still runs locally via docker-compose, so HCP Vault Dedicated still needs a
-network path to reach *it* specifically (the database secrets engine's `connection_url`) even
-though the Kubernetes secrets engine's `K8S_HOST` is now a real public EKS endpoint -- a
-tunnel (ngrok/cloudflared) for now, same caveat as before just narrowed to orders-db alone.
-
 ```bash
 mkdir -p /tmp/vault-k8s-config
-kubectl --context vault-agentic-iam config view --raw \
-  -o jsonpath='{.clusters[?(@.name=="vault-agentic-iam")].cluster.certificate-authority-data}' \
+# --minify, not a name match on "vault-agentic-iam" -- `--alias` names the
+# *context*, but the cluster entry it points to keeps its full ARN name
+# (arn:aws:eks:<region>:<account>:cluster/vault-agentic-iam), so a jsonpath
+# match on the alias finds nothing and silently writes an empty ca.pem.
+kubectl --context vault-agentic-iam config view --raw --minify \
+  -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' \
   | base64 -d > /tmp/vault-k8s-config/ca.pem
 kubectl --context vault-agentic-iam -n vault create token vault --duration=87600h \
   > /tmp/vault-k8s-config/reviewer.jwt
 
 ORDERS_DB_ADMIN_PASSWORD=changeme-local-only \
+ORDERS_DB_HOST="$(terraform -chdir=terraform output -raw orders_db_address)" \
 K8S_HOST="$(terraform -chdir=terraform output -raw cluster_endpoint)" \
 K8S_CA_CERT=/tmp/vault-k8s-config/ca.pem \
 K8S_REVIEWER_JWT=/tmp/vault-k8s-config/reviewer.jwt \
@@ -72,9 +80,10 @@ vault read agent-registry/registration/entity-id/"$(vault read -field=id identit
 Export these once per terminal session (keeps every beat's commands short):
 
 ```bash
-export VAULT_ADDR=https://<cluster-id>.vault.<region>.aws.hashicorp.cloud:8200
+export VAULT_ADDR="$(terraform -chdir=terraform output -raw vault_public_endpoint_url)"
 export VAULT_NAMESPACE=admin
 export CLUSTER_NAME=vault-agentic-iam
+export ORDERS_DB_ADMIN_PASSWORD="<from .env>"
 export MOCK_IDP_ISSUER="https://test-tenant.verify.ibm.com/oidc/endpoint/default"
 export ONCALL_ENGINEER_SUBJECT="oncall-engineer-test-subject"
 export SRE_AGENT_SUBJECT="sre-incident-agent-test-subject"

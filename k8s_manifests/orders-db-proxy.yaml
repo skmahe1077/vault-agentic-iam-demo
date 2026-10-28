@@ -1,0 +1,49 @@
+# orders-db (RDS) is private, reachable only from inside the VPC or over
+# the HVN peering (see terraform/rds.tf, terraform/hcp.tf). This pod is
+# the bridge for the presenter's local `psql` to reach it: a plain TCP
+# forwarder running inside the VPC, port-forwarded to localhost by
+# scripts/bootstrap-eks.sh. It is NOT in the Vault-to-database path --
+# Vault's database secrets engine reaches RDS directly over the peering.
+#
+# ORDERS_DB_HOST is substituted by scripts/bootstrap-eks.sh before apply
+# (terraform output -raw orders_db_address) -- kept as a literal
+# placeholder here rather than a Kustomize/Helm templating layer, matching
+# this repo's existing plain-manifest style.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-db-proxy
+  namespace: default
+  labels:
+    app: orders-db-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders-db-proxy
+  template:
+    metadata:
+      labels:
+        app: orders-db-proxy
+    spec:
+      containers:
+        - name: socat
+          image: alpine/socat:1.8.0.1
+          args:
+            - "-d"
+            - "TCP-LISTEN:5432,fork,reuseaddr"
+            - "TCP:ORDERS_DB_HOST_PLACEHOLDER:5432"
+          ports:
+            - containerPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-db-proxy
+  namespace: default
+spec:
+  selector:
+    app: orders-db-proxy
+  ports:
+    - port: 5432
+      targetPort: 5432

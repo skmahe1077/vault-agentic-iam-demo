@@ -16,17 +16,29 @@ Two variants of the same incident, side by side:
 
 ## Quick start
 
+Everything here is real AWS + HCP infrastructure (an EKS cluster, an RDS instance, and an HCP
+Vault Dedicated cluster) — `terraform apply` creates billable resources; `terraform destroy`
+when you're done.
+
 ```bash
 cp .env.example .env    # fill in ORDERS_DB_ADMIN_PASSWORD
-docker compose up -d    # orders-db only -- Vault itself is HCP Vault Dedicated, not local
-export VAULT_ADDR=https://<cluster-id>.vault.<region>.aws.hashicorp.cloud:8200
+export TF_VAR_orders_db_admin_password="$(grep ORDERS_DB_ADMIN_PASSWORD .env | cut -d= -f2)"
+
+cd terraform && terraform init
+cat > terraform.tfvars <<EOF
+presenter_ip_cidr = "$(curl -s https://checkip.amazonaws.com)/32"
+hcp_project_id    = "<your HCP project ID -- \`hcp profile display\`>"
+EOF
+terraform apply   # creates EKS+VPC, RDS orders-db, and the HCP Vault Dedicated cluster
+cd ..
+
+export AWS_REGION=us-west-2   # match terraform/variables.tf aws_region / the HVN's region
+./scripts/bootstrap-eks.sh     # applies k8s manifests, starts the orders-db port-forward
+./scripts/load-orders-schema.sh
+
+export VAULT_ADDR="$(terraform -chdir=terraform output -raw vault_public_endpoint_url)"
 export VAULT_NAMESPACE=admin
 vault login              # token/OIDC/userpass -- whatever your cluster's auth method is
-
-cd terraform && terraform init && terraform apply \
-  -var='eks_public_access_cidrs=["<your-ip>/32","<HCP egress CIDRs>"]' && cd ..
-export AWS_REGION=us-east-1   # match terraform/variables.tf aws_region
-./scripts/bootstrap-eks.sh
 ```
 
 Then follow **[docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)** for the full presenter run-of-show
@@ -36,32 +48,42 @@ the actual mechanism in this repo.
 
 ## Running against HCP Vault Dedicated
 
-This demo is built exclusively against **HCP Vault Dedicated** (Agent Registry already
-provisioned there) — there is no local Vault container or Vault Enterprise license in this
-repo. `vault-config/*.sh` and `agent/secure/run.sh` just read
-`VAULT_ADDR`/`VAULT_TOKEN`/`VAULT_NAMESPACE` from the environment, so pointing them at your
-HCP cluster (see Quick start above) is the entire setup.
+This demo targets **HCP Vault Dedicated** (`terraform/hcp.tf` provisions the cluster itself;
+Agent Registry needs Vault 2.1.2+, Standard/Essential tier) — there is no local Vault container
+or Vault Enterprise license in this repo. `vault-config/*.sh` and `agent/secure/run.sh` just
+read `VAULT_ADDR`/`VAULT_TOKEN`/`VAULT_NAMESPACE` from the environment.
 
-The Kubernetes side runs on a real **EKS** cluster in AWS (`terraform/`), not a local `kind`
-cluster — HCP Vault Dedicated reaches its API server directly over a public endpoint
-restricted to HCP's published egress CIDRs plus your own IP (`eks_public_access_cidrs`, no
-default on purpose — see terraform/variables.tf). `orders-db` still runs locally via
-docker-compose, so two things remain to arrange before the
-`vault-config/01-enable-secrets-engines.sh` step:
+Two different network paths reach the two AWS resources Vault depends on, because **HCP Vault
+Dedicated publishes no static egress IP list** — there's nothing to put in a CIDR allowlist on
+the AWS side:
 
-- **`orders-db` reachability**: HCP Vault Dedicated needs a network path to reach it — a
-  tunnel (ngrok/cloudflared) for now. (The EKS side no longer needs this — its public endpoint
-  solves that half directly.)
-- **Audit trail (beat 6)**: `scripts/show-audit-trail.sh` tails a local `file` audit device,
-  which isn't how HCP Vault Dedicated exposes audit data (it uses HCP's own audit log
-  streaming to an external sink instead). This is a known gap — see docs/TALK-NOTES.md.
+- **EKS** (kubernetes secrets engine): public endpoint, open to `0.0.0.0/0`
+  (`eks_public_access_cidrs` in terraform/variables.tf). HVN peering can't help here — the
+  cluster's public hostname resolves to public IPs from outside the VPC regardless, so Vault's
+  traffic takes the internet path either way. What actually protects the endpoint is IAM+RBAC
+  auth on every request, the same as any public EKS cluster.
+- **orders-db / RDS** (database secrets engine): private, `publicly_accessible = false`, reached
+  over an **HVN peering connection** (`terraform/hcp.tf`) to the demo VPC. This one *can* be
+  locked down, because Vault connects by private IP, not a public hostname.
+
+`orders-db` is RDS, not a local docker-compose container, so there's a bridge for your local
+`psql` to reach it too: `k8s_manifests/orders-db-proxy.yaml` runs a small TCP forwarder inside
+the VPC, and `scripts/bootstrap-eks.sh` port-forwards it to `127.0.0.1:5433` — the same port
+docker-compose used to publish. `scripts/lib/orders-psql.sh` is the one place every script talks
+to it from.
+
+**Audit trail (beat 6)**: `scripts/show-audit-trail.sh` tails a local `file` audit device,
+which isn't how HCP Vault Dedicated exposes audit data — it streams audit logs to an external
+sink instead (`hcp_vault_cluster`'s `audit_log_config` block supports this, not yet wired up
+here). This is a known gap — see docs/TALK-NOTES.md.
 
 ## Prerequisites
 
-- Docker, `kubectl`, the `vault` CLI, the `aws` CLI (authenticated), `terraform`, `jq`
-- An **HCP Vault Dedicated** cluster with Agent Registry available (confirm the cluster's
-  Vault version supports Agent Registry/OBO/RAR)
-- An AWS account to provision the EKS cluster in (`terraform/`)
+- `kubectl`, the `vault` CLI, the `aws` CLI (authenticated), `terraform`, the `hcp` CLI
+  (authenticated via `hcp auth login`), `jq`, `psql` (e.g. `brew install libpq`)
+- An AWS account to provision EKS + RDS in (`terraform/`), and an existing **HCP HVN** in that
+  same region for `terraform/hcp.tf` to peer with and create the Vault cluster in — this repo
+  doesn't create the HVN itself
 - An IBM Verify tenant for the real delegated-authorization flow — or use **mock-IdP mode**
   (`scripts/dev/`) to rehearse the entire flow for real without one; see DEMO-SCRIPT.md
 
@@ -69,11 +91,11 @@ docker-compose, so two things remain to arrange before the
 
 | Path | What |
 |---|---|
-| `docker-compose.yml` | Postgres (`orders` DB) only -- Vault is HCP Vault Dedicated, not local |
-| `terraform/` | EKS cluster + VPC (replaces the local `kind` cluster) |
-| `k8s_manifests/` | checkout-service/billing-service + RBAC for the EKS cluster |
+| `terraform/` | EKS cluster + VPC, RDS orders-db, HCP Vault Dedicated cluster + HVN peering |
+| `sql/` | orders-db schema, loaded by `scripts/load-orders-schema.sh` |
+| `k8s_manifests/` | checkout-service/billing-service + RBAC for the EKS cluster, orders-db-proxy |
 | `vault-config/` | Secrets engines, policies, Agent Registry registration, IBM Verify config |
 | `agent/insecure/`, `agent/secure/` | The two agent variants |
-| `scripts/` | Incident simulation, reset, audit correlation, ephemeral-kubeconfig helper |
+| `scripts/` | Incident simulation, reset, audit correlation, ephemeral-kubeconfig/orders-psql helpers |
 | `scripts/dev/` | Mock IdP for rehearsing OBO+RAR without a real IBM Verify tenant |
 | `docs/` | Presenter run-of-show + build/debug notes |

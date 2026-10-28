@@ -24,7 +24,7 @@ K8S_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.ser
 EPHEMERAL_KUBECONFIG=$("${SCRIPT_DIR}/../../scripts/lib/ephemeral-kubeconfig.sh" "${STATIC_K8S_TOKEN}" "${K8S_SERVER}")
 
 echo "=== insecure agent: diagnosing (using standing DB credential) ==="
-docker exec -e PGPASSWORD="${STATIC_ORDERS_DB_PASSWORD}" orders-db psql -U orders_admin -d orders -c \
+"${SCRIPT_DIR}/../../scripts/lib/orders-psql.sh" orders_admin "${STATIC_ORDERS_DB_PASSWORD}" -c \
   "SELECT count(*) AS connections FROM pg_stat_activity WHERE datname = 'orders';"
 
 echo "=== insecure agent: fixing checkout-service (using standing K8s credential) ==="
@@ -34,7 +34,7 @@ kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
 echo
 echo "=== insecure agent: nothing stopped it from going further ==="
 echo "--- reading billing_accounts (never asked for, never scoped) ---"
-docker exec -e PGPASSWORD="${STATIC_ORDERS_DB_PASSWORD}" orders-db psql -U orders_admin -d orders -c \
+"${SCRIPT_DIR}/../../scripts/lib/orders-psql.sh" orders_admin "${STATIC_ORDERS_DB_PASSWORD}" -c \
   "SELECT customer_id, card_last4, balance_cents FROM billing_accounts;"
 
 echo "--- restarting billing-service (never asked for, never scoped) ---"

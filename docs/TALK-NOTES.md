@@ -251,10 +251,10 @@ What doesn't carry over:
   Dedicated runs in HashiCorp's own cloud (an HVN) — `K8S_HOST` (and the Postgres host for the
   database secrets engine) must be reachable *from HCP's network*, not just the laptop running
   these scripts. **Resolved for the K8s side (2026-10-24)**: `kind` was replaced with a real
-  EKS cluster in AWS (`terraform/`), given a public API endpoint restricted to HCP's published
-  egress CIDRs + the presenter's IP (`eks_public_access_cidrs`) — see "EKS on AWS replaces
-  kind" below. `orders-db` is still local-only, so it still needs a tunnel
-  (ngrok/cloudflared) for HCP Vault Dedicated to reach it; that half of the gap remains.
+  EKS cluster in AWS (`terraform/`). See "EKS on AWS replaces kind" below for how it's actually
+  reached — the "HCP's published egress CIDRs" plan mentioned there turned out not to be
+  possible; see "HCP Vault Dedicated publishes no static egress IPs" (2026-10-27) for why, and
+  how `orders-db` (now RDS, not local-only) is reached instead.
 - **Beat 6 (`scripts/show-audit-trail.sh`) doesn't work as-is.** It tails a local `file` audit
   device at `docker-compose/vault/logs/audit.log`, which only existed because local dev-mode
   Vault mounted that path from the container — now removed. HCP Vault Dedicated has no
@@ -279,19 +279,19 @@ What changed mechanically:
   --alias "${CLUSTER_NAME}"`.
 - `k8s_manifests/*.yaml` (the Deployments, the two Vault-targeted Roles, Vault's own RBAC)
   needed **zero changes** — they're plain K8s manifests with nothing kind-specific in them.
-- The EKS API server is given a public endpoint restricted via
-  `eks_public_access_cidrs` (terraform/variables.tf) to HCP Vault Dedicated's published egress
-  CIDR ranges plus the presenter's own IP — deliberately has no default, so you can't
-  `terraform apply` with the API server open to the whole internet by accident.
+- The EKS API server is given a public endpoint controlled via `eks_public_access_cidrs`
+  (terraform/variables.tf), default `["0.0.0.0/0"]`. **Correction (2026-10-27)**: the original
+  plan here was to restrict this to "HCP Vault Dedicated's published egress CIDR ranges" —
+  no such list exists (see the new section below). It's open to the internet instead, same as
+  the AWS/eksctl default for a public endpoint; IAM+RBAC auth on every request is what actually
+  protects it.
 - Nodes sit in public subnets with no NAT gateway, to keep this cheap for a short-lived demo
   cluster. **Unverified**: whether the EKS-managed node group's own launch template overrides
   the subnet's `map_public_ip_on_launch` for the nodes' network interfaces (module-version-
   dependent AWS launch-template behavior) — check with `aws ec2 describe-instances` after
   `terraform apply`; if nodes come up without a public IP, the fallback is `enable_nat_gateway
   = true` on `module.vpc` (small added cost, not yet needed/tested).
-- `orders-db` (Postgres) stays local via docker-compose -- only the K8s side moved to AWS.
-  HCP Vault Dedicated still needs a tunnel to reach it for the database secrets engine; this
-  is the one reachability gap EKS doesn't close.
+- `orders-db` moved from local docker-compose to RDS (2026-10-27) — see the new section below.
 - `enable_cluster_creator_admin_permissions = true` grants the Terraform-applying IAM
   principal cluster-admin via an EKS access entry — no hand-rolled `aws-auth` ConfigMap.
 - Not yet run live against a real AWS account/HCP Vault Dedicated cluster at the time of this
@@ -299,6 +299,59 @@ What changed mechanically:
   `terraform apply` + the full K8S_HOST/CA/reviewer-JWT handoff into
   `vault-config/01-enable-secrets-engines.sh` hasn't been rehearsed end-to-end yet. Treat as
   the next thing to validate before relying on it live.
+
+## HCP Vault Dedicated publishes no static egress IPs, and orders-db moves to RDS (2026-10-27)
+
+Discovered while actually trying to provision this for the first time (prior notes above
+assumed "HCP Vault Dedicated's published egress CIDRs" existed — checked HashiCorp's own docs
+and confirmed they don't). HashiCorp's supported ways for Vault Dedicated to reach a customer
+resource are HVN peering, transit gateway, or PrivateLink/VPC Lattice — not a CIDR allowlist on
+the customer's side. This changes both reachability stories at once:
+
+- **EKS**: peering doesn't help, because the EKS public hostname resolves to public IPs even
+  from inside a peered network — Vault's connection takes the internet path regardless. Settled
+  on leaving the endpoint open (`0.0.0.0/0`), same as the AWS default; IAM+RBAC is the real
+  control, not a CIDR list that was never obtainable.
+- **orders-db**: moved off local docker-compose onto RDS, specifically *because* RDS can be
+  reached privately where EKS can't — `publicly_accessible = false` means AWS publishes the
+  instance's private IP in public DNS, so Vault resolves the plain hostname to `10.90.x.x` and
+  routes it over an HVN peering connection (`terraform/hcp.tf`: `hcp_aws_network_peering` +
+  `aws_vpc_peering_connection_accepter` + `hcp_hvn_route`, following the pattern in the
+  `terraform-provider-hcp` docs). This retires the old "tunnel (ngrok/cloudflared) for
+  orders-db" plan entirely — no tunnel needed once it's RDS behind peering.
+- The existing HVN (`hvn`, AWS us-west-2, `172.25.16.0/20`) was created out-of-band, not by this
+  repo's Terraform — `terraform/hcp.tf` reads it via `data "hcp_hvn"`, doesn't create it.
+  `aws_region` default moved from us-east-1 to **us-west-2** to match it; peering is
+  region-locked.
+- The presenter's local `psql` still needs to reach RDS despite it being private now:
+  `k8s_manifests/orders-db-proxy.yaml` (a `socat` forwarder) plus a `kubectl port-forward` in
+  `scripts/bootstrap-eks.sh`, landing on `127.0.0.1:5433` — the same port docker-compose used to
+  publish. `scripts/lib/orders-psql.sh` is the single call site every script (trigger-incident,
+  reset, both agent/*/run.sh) routes through now.
+- **Apostrophes inside `${VAR:?message}` silently swallow the rest of the script on macOS's
+  system bash.** Found while debugging why `vault-config/01-enable-secrets-engines.sh`'s whole
+  database section (its echo, both `vault write`s) never printed anything and never errored --
+  `set -euo pipefail`, `bash -n`, everything looked clean. Root cause: macOS ships bash 3.2.57
+  (GPLv3 licensing, `/bin/bash` and `/usr/bin/env bash` both resolve to it, no Homebrew bash
+  installed here) and its parser does not treat a `'` inside `${VAR:?message}` as inert even
+  when the whole expansion sits inside `"..."` -- confirmed in total isolation:
+  `: "${FOO:?it's fine}"` fails `bash -n` with "unexpected EOF while looking for matching `''`".
+  The lone apostrophe becomes an *opening* quote that bash then pairs with the next `'` it finds
+  anywhere later in the file (here, one inside the `creation_statements` value), silently
+  turning everything in between into one inert string literal passed to `:` -- no syntax error,
+  exit 0, just missing output. Two more live instances found and fixed the same way in
+  `agent/secure/request-delegation-token.sh` (`ONCALL_ENGINEER_SUBJECT`/`SRE_AGENT_SUBJECT`
+  guards, the mock-IdP path beats 3-5 actually exercise) -- those two apostrophes happened to
+  pair with *each other*, so execution wasn't broken downstream, but the SRE_AGENT_SUBJECT
+  precondition check was silently merged into the other and never ran standalone. Fix was just
+  dropping the apostrophe from each message (`cluster's` -> `clusters`, etc.) -- grepped the
+  whole repo afterward for the same pattern (`\$\{[A-Za-z_]+:\?[^}]*'`) and confirmed clean.
+- **hcp_vault_cluster's `tier` field has no literal `"essential"` value** in the Terraform
+  provider schema — only `dev`, `standard_small/medium/large`, `plus_small/medium/large`.
+  Agentic IAM needs Standard or Essential (Vault 2.1.2+) per HashiCorp's docs, so landed on
+  `standard_small` as the cheapest tier that's both a valid Terraform value and satisfies that
+  requirement. Worth re-checking if a literal Essential tier shows up in a future provider
+  release.
 
 ## Agent Registry + identity wiring (resolved 2026-10-18)
 

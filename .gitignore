@@ -12,8 +12,6 @@ verify-oauth-secrets.json
 
 # local state
 vault-config/data/
-docker-compose/vault/data/
-docker-compose/vault/logs/
 *.log
 
 # terraform

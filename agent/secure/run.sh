@@ -18,7 +18,7 @@ DIAG_TOKEN=$(RAR_PATH="database/creds/readonly-orders" RAR_CAPABILITY="read" \
 DB_CREDS=$(VAULT_TOKEN="${DIAG_TOKEN}" vault read -format=json database/creds/readonly-orders)
 DB_USER=$(echo "${DB_CREDS}" | jq -r '.data.username')
 DB_PASS=$(echo "${DB_CREDS}" | jq -r '.data.password')
-docker exec -e PGPASSWORD="${DB_PASS}" orders-db psql -U "${DB_USER}" -d orders -c \
+"${SCRIPT_DIR}/../../scripts/lib/orders-psql.sh" "${DB_USER}" "${DB_PASS}" -c \
   "SELECT count(*) AS connections FROM pg_stat_activity WHERE datname = 'orders';"
 echo "(credential ${DB_USER} expires in ~3m, read-only on orders, never touches billing_accounts)"
 

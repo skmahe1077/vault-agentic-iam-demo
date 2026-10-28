@@ -21,6 +21,11 @@ module "vpc" {
 
   azs            = slice(data.aws_availability_zones.available.names, 0, 2)
   public_subnets = ["10.90.0.0/20", "10.90.16.0/20"]
+  # Private subnets exist only for the RDS orders-db instance to live in --
+  # it's reached via HVN peering (terraform/hcp.tf), never the public
+  # internet. No NAT gateway: nothing in these subnets needs outbound
+  # internet access.
+  private_subnets = ["10.90.32.0/20", "10.90.48.0/20"]
 
   map_public_ip_on_launch = true
   enable_dns_hostnames    = true

@@ -2,12 +2,14 @@
 # Enables and configures the two secrets engines the incident-response
 # agent draws ephemeral grants from. Run against HCP Vault Dedicated
 # (export VAULT_ADDR/VAULT_NAMESPACE, then `vault login`). HCP Vault
-# Dedicated must have network reachability to K8S_HOST below -- see
-# "Running against HCP Vault Dedicated" in README.md.
+# Dedicated must have network reachability to K8S_HOST (public internet,
+# IAM+RBAC authenticated) and ORDERS_DB_HOST (private, over HVN peering) --
+# see "Running against HCP Vault Dedicated" in README.md.
 set -euo pipefail
 
 : "${ORDERS_DB_ADMIN_PASSWORD:?set to the orders-db admin password}"
-: "${K8S_HOST:?set to the EKS cluster's API server address (terraform -chdir=terraform output -raw cluster_endpoint) -- see docs/TALK-NOTES.md}"
+: "${ORDERS_DB_HOST:?set to the orders-db RDS hostname (terraform -chdir=terraform output -raw orders_db_address) -- reachable from HCP Vault Dedicated over the HVN peering, see terraform/hcp.tf}"
+: "${K8S_HOST:?set to the EKS clusters API server address (terraform -chdir=terraform output -raw cluster_endpoint) -- see docs/TALK-NOTES.md}"
 : "${K8S_CA_CERT:?path to the EKS cluster CA cert}"
 : "${K8S_REVIEWER_JWT:?path to a Vault-dedicated ServiceAccount token with the TokenRequest permissions documented in docs/TALK-NOTES.md}"
 
@@ -17,7 +19,7 @@ vault secrets enable -path=database database 2>/dev/null || echo "already enable
 vault write database/config/orders-db \
     plugin_name=postgresql-database-plugin \
     allowed_roles="readonly-orders" \
-    connection_url="postgresql://{{username}}:{{password}}@orders-db:5432/orders?sslmode=disable" \
+    connection_url="postgresql://{{username}}:{{password}}@${ORDERS_DB_HOST}:5432/orders?sslmode=require" \
     username="orders_admin" \
     password="${ORDERS_DB_ADMIN_PASSWORD}"
 
