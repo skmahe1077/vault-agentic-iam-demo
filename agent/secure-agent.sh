@@ -53,3 +53,11 @@ kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
   -n prod-checkout get deployment checkout-service
 
 rm -f "${EPHEMERAL_KUBECONFIG}"
+
+echo
+echo "\$ kubectl -n prod-checkout get pods"
+kubectl --context "${CLUSTER_NAME}" -n prod-checkout get pods
+
+echo
+echo "\$ kubectl -n prod-billing get pods"
+kubectl --context "${CLUSTER_NAME}" -n prod-billing get pods

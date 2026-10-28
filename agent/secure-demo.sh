@@ -31,6 +31,7 @@ echo
 echo "\$ vault read agent-registry/registration/entity-id/\$AGENT_ENTITY_ID"
 AGENT_ENTITY_ID=$(vault read -field=id identity/entity/name/sre-incident-agent)
 vault read agent-registry/registration/entity-id/"${AGENT_ENTITY_ID}"
+pause
 
 echo
 echo "\$ vault policy read ceiling-sre-incident-agent"
