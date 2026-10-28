@@ -3,7 +3,9 @@
 A presenter run-of-show: what to type, in what order, and what to say. Rehearsed end-to-end
 on 2026-10-18 using the mock IdP (`MOCK_IDP_ISSUER` mode) standing in for IBM Verify — swap
 to the real tenant's env vars once validated (see "Switching to the real IBM Verify tenant"
-at the bottom); nothing else in this script changes either way.
+at the bottom); nothing else in this script changes either way. Re-rehearsed end-to-end
+against **real** AWS + HCP infrastructure (EKS, RDS, HCP Vault Dedicated v2.1.2, HVN peering)
+on 2026-10-27 — every command below is copy-pasteable as written.
 
 ## Before you go on stage (not shown live)
 
@@ -35,7 +37,10 @@ export AWS_REGION=us-west-2     # match terraform/variables.tf aws_region / the 
 
 export VAULT_ADDR="$(terraform -chdir=terraform output -raw vault_public_endpoint_url)"
 export VAULT_NAMESPACE=admin
-vault login                     # token/OIDC/userpass -- whatever this cluster's auth method is
+# terraform apply also created an admin token for this cluster (hcp_vault_cluster_admin_token
+# in terraform/hcp.tf) -- simplest path in, no separate auth method to configure:
+export VAULT_TOKEN="$(terraform -chdir=terraform output -raw vault_admin_token)"
+vault login -no-print "${VAULT_TOKEN}"
 ```
 
 `./vault-config/00-enable-audit.sh` is a known gap against HCP (no local `file` audit device
@@ -61,8 +66,16 @@ K8S_REVIEWER_JWT=/tmp/vault-k8s-config/reviewer.jwt \
   ./vault-config/01-enable-secrets-engines.sh
 
 # Mock-IdP mode (today) -- swap for the real IBM_VERIFY_* values once validated.
+# The mock IdP serves its JWKS from localhost:8787, but HCP Vault Dedicated is a
+# remote cluster -- it can't reach your laptop's loopback. Tunnel the port first
+# (no account needed) and pass the tunnel URL in as JWKS_PUBLIC_URL:
+cloudflared tunnel --url http://localhost:8787 > /tmp/cloudflared.log 2>&1 &
+sleep 8
+JWKS_PUBLIC_URL="$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log | head -1)"
+echo "JWKS tunnel: ${JWKS_PUBLIC_URL}"
+
 export MOCK_IDP_ISSUER="https://test-tenant.verify.ibm.com/oidc/endpoint/default"
-MOCK_ISSUER="${MOCK_IDP_ISSUER}" ./scripts/dev/configure_mock_idp.sh
+MOCK_ISSUER="${MOCK_IDP_ISSUER}" JWKS_PUBLIC_URL="${JWKS_PUBLIC_URL}" ./scripts/dev/configure_mock_idp.sh
 
 export ONCALL_ENGINEER_SUBJECT="oncall-engineer-test-subject"
 export SRE_AGENT_SUBJECT="sre-incident-agent-test-subject"
@@ -82,8 +95,9 @@ Export these once per terminal session (keeps every beat's commands short):
 ```bash
 export VAULT_ADDR="$(terraform -chdir=terraform output -raw vault_public_endpoint_url)"
 export VAULT_NAMESPACE=admin
+export VAULT_TOKEN="$(terraform -chdir=terraform output -raw vault_admin_token)"  # don't show this on a shared screen
 export CLUSTER_NAME=vault-agentic-iam
-export ORDERS_DB_ADMIN_PASSWORD="<from .env>"
+source .env && export ORDERS_DB_ADMIN_PASSWORD
 export MOCK_IDP_ISSUER="https://test-tenant.verify.ibm.com/oidc/endpoint/default"
 export ONCALL_ENGINEER_SUBJECT="oncall-engineer-test-subject"
 export SRE_AGENT_SUBJECT="sre-incident-agent-test-subject"
@@ -139,8 +153,10 @@ This single script runs all three beats:
 - **Beat 3 (delegated authorization)**: diagnoses via `database/creds/readonly-orders`, on
   behalf of the approving on-call engineer.
 - **Beat 4 (ceiling blocks overreach)**: attempts `kubernetes/creds/billing-restart-role` —
-  denied with `CEILING_POLICY_DENIED`, even though the on-call engineer's own policy allows
-  it. Say: "the human could approve this. The ceiling still says no."
+  denied with a bare `403 permission denied` (confirmed live, twice -- Vault's ACL check
+  fails before ceiling-intersection logic even runs, so there's no ceiling-specific hint in
+  the error text itself), even though the on-call engineer's own policy allows it. Say: "the
+  human could approve this. The ceiling still says no."
 - **Beat 5 (ephemeral grant fixes it)**: restarts checkout-service via a token minted and
   expiring in minutes, scoped by RAR to exactly this one Vault path.
 
