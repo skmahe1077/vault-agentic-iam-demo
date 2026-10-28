@@ -6,8 +6,8 @@
 # exact command to fix it -- this script never touches Vault policy/data
 # or cluster workload state, only local plumbing.
 #
-# Usage: just run it -- self-sufficient the same way agent/demo.sh is, see
-# the block below.
+# Usage: just run it -- self-sufficient the same way agent/secure-demo.sh and
+# agent/insecure-demo.sh are, see the block below.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -130,7 +130,7 @@ fi
 echo
 echo "============================================================"
 if [ "${FAIL}" -eq 0 ]; then
-  echo "ALL CLEAR: ${PASS} checks passed. Go run ./agent/demo.sh"
+  echo "ALL CLEAR: ${PASS} checks passed. Go run ./agent/secure-demo.sh or ./agent/insecure-demo.sh"
 else
   echo "${FAIL} check(s) failed, ${PASS} passed -- fix those before running the demo"
 fi

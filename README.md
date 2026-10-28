@@ -9,11 +9,16 @@ using Vault Enterprise's Agentic IAM: a distinct **Agent Registry** identity, **
 requested or approved, and **ephemeral per-request authorization** (RAR) that scopes every
 grant to one task and expires it right after.
 
-`agent/demo.sh` runs the whole thing as one continuous story, matching the talk abstract
-exactly: identity → delegated authorization → ceiling caps blast radius → ephemeral grant does
-the real fix, solution only. `agent/incident-response-demo.sh` runs the same incident twice,
-back to back -- once with a standing credential (`agent/insecure-agent.sh`), once with Vault
-Agentic IAM -- so the difference shows up in the actual command output instead of narration.
+Two standalone demos, same incident, opposite ways to fix it:
+
+- `agent/secure-demo.sh` -- identity → delegated authorization → ceiling caps blast radius →
+  ephemeral grant does the real fix, matching the talk abstract exactly.
+- `agent/insecure-demo.sh` -- a standing credential with no Vault identity behind it fixes
+  the same incident, then keeps going into billing data and billing-service it was never
+  asked to touch.
+
+Run either one on its own, or both back to back for direct contrast -- the difference shows
+up in the actual command output, not narration.
 
 ## Quick start
 
@@ -102,9 +107,9 @@ here). This is a known gap — see docs/TALK-NOTES.md.
 | `sql/` | orders-db schema, loaded by `scripts/load-orders-schema.sh` |
 | `k8s_manifests/` | checkout-service/billing-service + RBAC for the EKS cluster, orders-db-proxy |
 | `vault-config/` | Secrets engines, policies, Agent Registry registration, IBM Verify config |
-| `agent/demo.sh` | Solution-only demo -- identity, delegated auth, ceiling, ephemeral grant |
-| `agent/incident-response-demo.sh` | Same incident fixed twice -- standing credential, then Agentic IAM |
-| `agent/insecure-agent.sh`, `agent/secure-agent.sh` | The two agent variants the demo scripts are built from |
+| `agent/secure-demo.sh` | The secure way -- identity, delegated auth, ceiling, ephemeral grant |
+| `agent/insecure-demo.sh` | The insecure way -- a standing credential, no Vault identity, no limits |
+| `agent/insecure-agent.sh`, `agent/secure-agent.sh` | The bare mechanics each demo script runs |
 | `scripts/preflight-check.sh` | Run before the demo -- verifies and auto-fixes the environment |
 | `scripts/` | Incident simulation, reset, audit correlation, ephemeral-kubeconfig/orders-psql helpers |
 | `scripts/dev/` | Mock IdP for rehearsing OBO+RAR without a real IBM Verify tenant |

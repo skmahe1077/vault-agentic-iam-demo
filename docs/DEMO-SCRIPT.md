@@ -89,7 +89,7 @@ Two scripts, both self-sufficient, both printing nothing but real commands and t
 output -- no narration, no banners. Say the talking points yourself, live, over the output;
 the terminal only shows what actually happened.
 
-`scripts/preflight-check.sh`, `agent/demo.sh`, and `agent/incident-response-demo.sh` each
+`scripts/preflight-check.sh`, `agent/secure-demo.sh`, and `agent/insecure-demo.sh` each
 source `/tmp/vault-session.env` (VAULT_ADDR/VAULT_NAMESPACE/VAULT_TOKEN, written once by
 `terraform apply`) and `.env` (ORDERS_DB_ADMIN_PASSWORD) themselves, and default the
 mock-IdP values if not already set. From any fresh terminal on this machine, just `cd` into
@@ -109,10 +109,10 @@ Wait for `ALL CLEAR` before continuing. If checkout-service isn't `2/2 ready`, r
 `./scripts/reset.sh` first (pods take a few seconds to settle after any reset/restart --
 re-check with `kubectl -n prod-checkout get pods` before moving on).
 
-**`agent/demo.sh`** -- the abstract's claims, solution only, in order:
+**`agent/secure-demo.sh`** -- the secure way, matching the abstract's claims in order:
 
 ```bash
-./agent/demo.sh
+./agent/secure-demo.sh
 ```
 
 1. Fires the incident (`scripts/trigger-incident.sh`): a connection leak against the orders
@@ -129,27 +129,24 @@ re-check with `kubectl -n prod-checkout get pods` before moving on).
 
 Pauses for enter between the three sections above (`pause()` in the script) so you can talk
 over each one -- run non-interactively instead (e.g. for a recording) with
-`./agent/demo.sh < /dev/null`.
+`./agent/secure-demo.sh < /dev/null`.
 
-**`agent/incident-response-demo.sh`** -- the same incident, fixed twice, for direct
-contrast:
+**`agent/insecure-demo.sh`** -- the same incident, the insecure way:
 
 ```bash
-./agent/incident-response-demo.sh
+./agent/insecure-demo.sh
 ```
 
-1. Fires the incident, then runs `agent/insecure-agent.sh`: opens with
-   `vault read agent-registry/registration/display-name/sre-incident-agent-insecure` --
-   fails, `agent with provided display_name does not exist`, because this identity was never
-   registered with Vault at all. Then a static DB password and a long-lived Kubernetes
-   ServiceAccount token fix checkout-service, and keep going -- reading `billing_accounts`
-   and restarting billing-service, neither of which was asked for.
-2. Fires the incident again, then runs `agent/secure-agent.sh` (same three steps as
-   `demo.sh` above).
+Fires the incident, then runs `agent/insecure-agent.sh`: opens with
+`vault read agent-registry/registration/display-name/sre-incident-agent-insecure` --
+fails, `agent with provided display_name does not exist`, because this identity was never
+registered with Vault at all. Then a static DB password and a long-lived Kubernetes
+ServiceAccount token fix checkout-service, and keep going -- reading `billing_accounts` and
+restarting billing-service, neither of which was asked for.
 
-Same `< /dev/null` trick works here for a non-interactive run.
-
-Both scripts share `agent/secure-agent.sh`.
+Run both scripts back to back for direct contrast -- fire `agent/secure-demo.sh` right after
+`agent/insecure-demo.sh` (or vice versa) and the difference shows up in the actual command
+output, not narration.
 
 ## Reset between rehearsals
 
