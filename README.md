@@ -42,9 +42,13 @@ vault login              # token/OIDC/userpass -- whatever your cluster's auth m
 ```
 
 Then follow **[docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)** for the full presenter run-of-show
-(setup + all six beats, exact commands). **[docs/TALK-NOTES.md](docs/TALK-NOTES.md)** has the
-build notes, every bug found/fixed along the way, and the mapping from the talk's abstract to
-the actual mechanism in this repo.
+(setup + the single on-stage demo, exact commands). Before walking on stage, run
+`./scripts/preflight-check.sh` — it checks Vault, the Agent Registry entry, checkout-service's
+pods, the orders-db-proxy port-forward, and the mock-IdP JWKS tunnel in one shot, and
+auto-restarts the two that are known to drop silently between rehearsals (the port-forward and
+the tunnel). **[docs/TALK-NOTES.md](docs/TALK-NOTES.md)** has the build notes, every bug
+found/fixed along the way, and the mapping from the talk's abstract to the actual mechanism in
+this repo.
 
 ## Running against HCP Vault Dedicated
 
@@ -97,6 +101,7 @@ here). This is a known gap — see docs/TALK-NOTES.md.
 | `vault-config/` | Secrets engines, policies, Agent Registry registration, IBM Verify config |
 | `agent/live-demo.sh` | The single on-stage demo -- identity, delegated auth, ceiling, ephemeral grant |
 | `agent/insecure/`, `agent/secure/` | The two agent variants `live-demo.sh` is built from |
+| `scripts/preflight-check.sh` | Run before walking on stage -- verifies and auto-fixes the environment |
 | `scripts/` | Incident simulation, reset, audit correlation, ephemeral-kubeconfig/orders-psql helpers |
 | `scripts/dev/` | Mock IdP for rehearsing OBO+RAR without a real IBM Verify tenant |
 | `docs/` | Presenter run-of-show + build/debug notes |
