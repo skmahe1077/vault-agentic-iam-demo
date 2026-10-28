@@ -42,9 +42,6 @@ export VAULT_TOKEN="$(terraform -chdir=terraform output -raw vault_admin_token)"
 vault login -no-print "${VAULT_TOKEN}"
 ```
 
-`./vault-config/00-enable-audit.sh` is a known gap against HCP (no local `file` audit device
-there -- see docs/TALK-NOTES.md); beat 6 is currently unavailable on this path.
-
 ```bash
 mkdir -p /tmp/vault-k8s-config
 # --minify, not a name match on "vault-agentic-iam" -- `--alias` names the
@@ -162,20 +159,6 @@ authenticated *as* the ephemeral delegation token (not the admin session), which
 pasting a JWT into the login box within its ~60-300s window, live, which isn't realistic to
 pull off. Terminal is the reliable path; see docs/TALK-NOTES.md "UI walkthrough: explored, not
 worth it" for the full account if this comes up again.
-
-### Optional — audit closes the loop
-
-Known gap against HCP Vault Dedicated (reads a local `file` audit device that doesn't exist
-there -- see docs/TALK-NOTES.md). Narrate the mechanism verbally instead using the fields
-below, or fold this line into "the outcome" close of `agent/live-demo.sh`.
-
-```bash
-./scripts/show-audit-trail.sh
-```
-Say, pointing at columns left to right: "`ACTOR` — the agent. `ON_BEHALF_OF_ENTITY` — the
-human who approved it. `GRANTING_POLICIES` — the exact two policies that had to agree,
-logged by Vault itself. `TTL` — capped to the delegation token's own lifetime, not the role's
-default. Every action, scoped, expiring, and traceable back to a person."
 
 ## Reset between rehearsals
 

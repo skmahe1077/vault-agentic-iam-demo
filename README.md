@@ -42,7 +42,7 @@ vault login              # token/OIDC/userpass -- whatever your cluster's auth m
 ```
 
 Then follow **[docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)** for the full presenter run-of-show
-(setup + the single on-stage demo, exact commands). Before walking on stage, run
+(setup + the single demo, exact commands). Before running the demo, run
 `./scripts/preflight-check.sh` — it checks Vault, the Agent Registry entry, checkout-service's
 pods, the orders-db-proxy port-forward, and the mock-IdP JWKS tunnel in one shot, and
 auto-restarts the two that are known to drop silently between rehearsals (the port-forward and
@@ -76,7 +76,7 @@ the VPC, and `scripts/bootstrap-eks.sh` port-forwards it to `127.0.0.1:5433` —
 docker-compose used to publish. `scripts/lib/orders-psql.sh` is the one place every script talks
 to it from.
 
-**Audit trail (beat 6)**: `scripts/show-audit-trail.sh` tails a local `file` audit device,
+**Audit trail**: `scripts/show-audit-trail.sh` tails a local `file` audit device,
 which isn't how HCP Vault Dedicated exposes audit data — it streams audit logs to an external
 sink instead (`hcp_vault_cluster`'s `audit_log_config` block supports this, not yet wired up
 here). This is a known gap — see docs/TALK-NOTES.md.
@@ -88,8 +88,10 @@ here). This is a known gap — see docs/TALK-NOTES.md.
 - An AWS account to provision EKS + RDS in (`terraform/`), and an existing **HCP HVN** in that
   same region for `terraform/hcp.tf` to peer with and create the Vault cluster in — this repo
   doesn't create the HVN itself
-- An IBM Verify tenant for the real delegated-authorization flow — or use **mock-IdP mode**
-  (`scripts/dev/`) to rehearse the entire flow for real without one; see DEMO-SCRIPT.md
+- No IBM Verify tenant needed — this demo runs entirely on **mock-IdP mode**
+  (`scripts/dev/`), which proves the real Vault-side OBO+RAR mechanism without one; see
+  DEMO-SCRIPT.md. The real-tenant RFC 8693 code path still exists in
+  `agent/secure/request-delegation-token.sh` but isn't part of the documented run-of-show.
 
 ## Layout
 
@@ -99,9 +101,9 @@ here). This is a known gap — see docs/TALK-NOTES.md.
 | `sql/` | orders-db schema, loaded by `scripts/load-orders-schema.sh` |
 | `k8s_manifests/` | checkout-service/billing-service + RBAC for the EKS cluster, orders-db-proxy |
 | `vault-config/` | Secrets engines, policies, Agent Registry registration, IBM Verify config |
-| `agent/live-demo.sh` | The single on-stage demo -- identity, delegated auth, ceiling, ephemeral grant |
+| `agent/live-demo.sh` | The single demo -- identity, delegated auth, ceiling, ephemeral grant |
 | `agent/insecure/`, `agent/secure/` | The two agent variants `live-demo.sh` is built from |
-| `scripts/preflight-check.sh` | Run before walking on stage -- verifies and auto-fixes the environment |
+| `scripts/preflight-check.sh` | Run before the demo -- verifies and auto-fixes the environment |
 | `scripts/` | Incident simulation, reset, audit correlation, ephemeral-kubeconfig/orders-psql helpers |
 | `scripts/dev/` | Mock IdP for rehearsing OBO+RAR without a real IBM Verify tenant |
 | `docs/` | Presenter run-of-show + build/debug notes |

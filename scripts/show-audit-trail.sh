@@ -13,7 +13,7 @@ AUDIT_LOG="$(dirname "$0")/../docker-compose/vault/logs/audit.log"
 
 : "${AUDIT_LOG:?}"
 if [ ! -f "${AUDIT_LOG}" ]; then
-  echo "No audit log found at ${AUDIT_LOG}. Did you run vault-config/00-enable-audit.sh?"
+  echo "No audit log found at ${AUDIT_LOG}."
   exit 1
 fi
 
