@@ -158,6 +158,25 @@ if you need more breathing room for some reason — still bounded by the role's 
 It pauses for enter between sections (`pause()` in the script) so you can talk over each one —
 run it non-interactively instead (e.g. in a recording) with `./agent/demo.sh < /dev/null`.
 
+### `agent/demo-secure-vs-insecure.sh` — the comparison cut
+
+Same setup, same preflight check, but this one runs the incident twice:
+
+```bash
+./agent/demo-secure-vs-insecure.sh
+```
+
+- **`THE ANTI-PATTERN: standing, unscoped access`** — fires the incident, then runs
+  `agent/insecure-agent.sh`: a static DB password and a long-lived, broad Kubernetes
+  ServiceAccount token fix checkout-service, then keep going — reads `billing_accounts` and
+  restarts billing-service, neither of which was asked for. Say: "same credential did all
+  four actions. No identity, no task scope, no expiry."
+- **`THE FIX: delegated, ceiling-capped, ephemeral authorization`** — fires the incident
+  again, then runs `agent/secure-agent.sh` (same three steps as `demo.sh`'s last section:
+  diagnose, the denied overreach, the ephemeral fix).
+
+Same `< /dev/null` trick works here for a non-interactive/recorded run.
+
 **UI instead of terminal — don't.** Explored this at length: Agent Registry has no page in
 this Vault UI build, the Leases list page throws a JS error on this cluster, and even with
 both working, the ceiling-denial moment can't be shown in the UI at all — it requires being
