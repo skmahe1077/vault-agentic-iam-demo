@@ -89,9 +89,15 @@ vault read agent-registry/registration/entity-id/"$(vault read -field=id identit
 No standing-credential anti-pattern in this cut of the talk — the abstract only promises the
 solution, so `agent/demo.sh` only shows the solution, end to end. If you want the audience to
 see the anti-pattern fail before the fix holds, run `agent/demo-contrast.sh` instead — same
-incident, fixed twice (standing credential, then Agentic IAM), narrated inline, self-sufficient
-the same way. Both scripts share `agent/secure/run.sh`; `demo-contrast.sh` just also runs
+incident, fixed twice (standing credential, then Agentic IAM), self-sufficient the same way.
+Both scripts share `agent/secure/run.sh`; `demo-contrast.sh` just also runs
 `agent/insecure/run.sh` first.
+
+Neither script explains the concept — every line printed is the real output of a `vault`,
+`kubectl`, or `psql` command run against the actual HCP Vault Dedicated cluster. Section
+labels (e.g. `=== delegated authorization: diagnosing ===`) just name which command is about
+to run; they're not narration. Say the talking points yourself, live, over the real output —
+don't expect the terminal to say them for you.
 
 **No manual export block needed** — both `scripts/preflight-check.sh` and `agent/demo.sh` are
 self-sufficient: they source `/tmp/vault-session.env` (VAULT_ADDR/VAULT_NAMESPACE/VAULT_TOKEN,
@@ -113,29 +119,31 @@ Wait for `ALL CLEAR` before continuing. If checkout-service isn't `2/2 ready`, r
 `./scripts/reset.sh` first (pods take a few seconds to settle after any reset/restart —
 re-check with `kubectl -n prod-checkout get pods` before moving on).
 
-Then one command runs the whole thing, narrated inline, in the exact order the abstract makes
-its claims:
+Then one command runs the whole thing, in the exact order the abstract makes its claims,
+pausing between sections so you can talk over the real output:
 
 ```bash
 ./agent/demo.sh
 ```
 
-- **The gap** — traditional IAM assumes a predictable human, not an autonomous agent.
-- **Scene** — fires the incident (`scripts/trigger-incident.sh`): checkout-service degrading,
-  a connection leak against the orders database.
-- **1. A distinct, governed identity** — reads `sre-incident-agent`'s Agent Registry entry and
-  its ceiling policy. Say: "not a shared service account, not a static password."
-- **2. Delegated authorization** — diagnoses via `database/creds/readonly-orders`, on behalf
-  of the approving on-call engineer.
-- **3. Ceiling caps blast radius** — attempts `kubernetes/creds/billing-restart-role`; denied
-  with a bare `403 permission denied` (confirmed live — Vault's ACL check fails before
-  ceiling-intersection logic even runs, so there's no ceiling-specific hint in the error text
-  itself), even though the on-call engineer's own policy allows it. Say: "the human could
-  approve this. The ceiling still says no."
-- **4. Ephemeral per-request authorization does the real fix** — restarts checkout-service via
-  a token RAR-scoped to exactly this one path.
-- **The outcome** — every grant was scoped to one task and already expiring. Controlled,
-  traceable, auditable, by construction.
+- **`SCENE: checkout-service is degrading`** — fires the incident
+  (`scripts/trigger-incident.sh`): checkout-service degrading, a connection leak against the
+  orders database. Say over it: "traditional IAM assumes a predictable human, not an
+  autonomous agent."
+- **`1. A DISTINCT, GOVERNED IDENTITY -- Agent Registry`** — reads `sre-incident-agent`'s
+  Agent Registry entry and its ceiling policy, live. Say: "not a shared service account, not
+  a static password."
+- **`2, 3, 4. DELEGATED AUTHORIZATION, CEILING, EPHEMERAL GRANT`** — runs
+  `agent/secure/run.sh`, three things happen in order:
+  - diagnoses via `database/creds/readonly-orders`, on behalf of the approving on-call
+    engineer
+  - attempts `kubernetes/creds/billing-restart-role`; denied with a bare
+    `403 permission denied` (confirmed live — Vault's ACL check fails before
+    ceiling-intersection logic even runs, so there's no ceiling-specific hint in the error
+    text itself), even though the on-call engineer's own policy allows it. Say: "the human
+    could approve this. The ceiling still says no."
+  - fixes checkout-service via a token RAR-scoped to exactly this one path, real TTL printed
+    on screen. Say: "every grant above was scoped to one task and already expiring."
 
 **On the actual TTL shown**: the script now prints whatever Vault actually issued (it reads
 `.lease_duration` off the API response), not a hardcoded guess. In mock-IdP mode this will
