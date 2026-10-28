@@ -85,17 +85,18 @@ vault read agent-registry/registration/entity-id/"$(vault read -field=id identit
 
 ## Running the demo
 
-Two scripts, both self-sufficient, both printing nothing but real commands and their real
+Three scripts, all self-sufficient, all printing nothing but real commands and their real
 output -- no narration, no banners. Say the talking points yourself, live, over the output;
 the terminal only shows what actually happened.
 
-`scripts/preflight-check.sh`, `agent/secure-demo.sh`, and `agent/insecure-demo.sh` each
-source `/tmp/vault-session.env` (VAULT_ADDR/VAULT_NAMESPACE/VAULT_TOKEN, written once by
-`terraform apply`) and `.env` (ORDERS_DB_ADMIN_PASSWORD) themselves, and default the
-mock-IdP values if not already set. From any fresh terminal on this machine, just `cd` into
-the repo and run them -- no manual export block needed. (A different machine that was never
-set up won't have `/tmp/vault-session.env`; the scripts fail with a clear message telling
-you what's missing, rather than silently misbehaving.)
+`scripts/preflight-check.sh`, `agent/secure-demo.sh`, `agent/insecure-demo.sh`, and
+`agent/compare-registration.sh` each source `/tmp/vault-session.env`
+(VAULT_ADDR/VAULT_NAMESPACE/VAULT_TOKEN, written once by `terraform apply`) and `.env`
+(ORDERS_DB_ADMIN_PASSWORD, where needed) themselves, and default the mock-IdP values if not
+already set. From any fresh terminal on this machine, just `cd` into the repo and run them --
+no manual export block needed. (A different machine that was never set up won't have
+`/tmp/vault-session.env`; the scripts fail with a clear message telling you what's missing,
+rather than silently misbehaving.)
 
 Run the preflight check before the demo -- it verifies Vault, the Agent Registry entry,
 checkout-service's pods, the orders-db-proxy port-forward, and the mock-IdP tunnel, and
@@ -109,27 +110,47 @@ Wait for `ALL CLEAR` before continuing. If checkout-service isn't `2/2 ready`, r
 `./scripts/reset.sh` first (pods take a few seconds to settle after any reset/restart --
 re-check with `kubectl -n prod-checkout get pods` before moving on).
 
+**Pauses after every single command, not just between sections** -- press enter to advance
+each time. Run non-interactively instead (e.g. for a recording) with
+`./agent/secure-demo.sh < /dev/null` / `./agent/insecure-demo.sh < /dev/null`, which skips all
+pauses automatically (stdin isn't a terminal, so `pause()` no-ops).
+
 **`agent/secure-demo.sh`** -- the secure way, matching the abstract's claims in order:
 
 ```bash
 ./agent/secure-demo.sh
 ```
 
-1. Fires the incident (`scripts/trigger-incident.sh`): a connection leak against the orders
-   database, then a broken readiness probe on checkout-service.
+1. Fires the incident (`scripts/trigger-incident.sh`): `kubectl get pods` baseline (healthy)
+   → the probe-breaking patch → `kubectl get pods` again (crash-looping) → a connection leak
+   against the orders database, running in the background throughout.
 2. `vault read agent-registry/registration/entity-id/...` -- `sre-incident-agent`'s real
    Agent Registry entry. `vault policy read ceiling-sre-incident-agent` -- its ceiling.
 3. Runs `agent/secure-agent.sh`:
-   - `vault read database/creds/readonly-orders` -- a credential minted on the spot, used to
-     diagnose via `psql`.
+   - `vault read database/creds/readonly-orders` -- a credential minted on the spot
+     (`lease_duration` ~299s / 5 minutes, real -- see "On TTL" below), used to diagnose via
+     `psql`.
    - `vault write kubernetes/creds/billing-restart-role` -- denied, `403 permission denied`.
      The on-call engineer's own policy allows this; the ceiling doesn't.
-   - `vault write kubernetes/creds/checkout-restart-role` -- succeeds, real `lease_duration`
-     visible in the JSON response, used to restart checkout-service.
+   - `vault write kubernetes/creds/checkout-restart-role` -- succeeds (same ~5 minute
+     `lease_duration`), used to restart checkout-service.
+   - `kubectl get deployment checkout-service` through that same ephemeral token -- the
+     token's RBAC only grants `get/list/patch` on the Deployment object, nothing on pods
+     (confirmed live: a `get pods` attempt through it gets a real `Forbidden`), so this is
+     the one read it can actually do.
+   - Two more `kubectl get pods` calls on the normal cluster context: `prod-checkout` (shows
+     the real rollout) and `prod-billing` (shows the single pod untouched, same age as
+     before) -- the "never touches billing" claim, visible directly in this run.
+4. Pauses once more, then runs `scripts/reset.sh` itself -- no separate cleanup step needed.
 
-Pauses for enter between the three sections above (`pause()` in the script) so you can talk
-over each one -- run non-interactively instead (e.g. for a recording) with
-`./agent/secure-demo.sh < /dev/null`.
+**On TTL**: both credentials' `lease_duration` is real -- read straight off the Vault API
+response, not narrated. Default is ~299s (5 minutes): the mock delegation JWT's TTL
+(`RAR_TTL` in `scripts/lib/request-delegation-token.sh`) and the database role's own
+`default_ttl` (`vault-config/01-enable-secrets-engines.sh`) were both raised to give enough
+time to talk through each step live. The effective TTL is always
+`min(role's default_ttl, delegation JWT's remaining validity)` -- still bounded by each
+role's own ceiling (10m max either way), so widening it never makes anything actually
+standing.
 
 **`agent/insecure-demo.sh`** -- the same incident, the insecure way:
 
@@ -137,16 +158,19 @@ over each one -- run non-interactively instead (e.g. for a recording) with
 ./agent/insecure-demo.sh
 ```
 
-Fires the incident, then runs `agent/insecure-agent.sh`: opens with
+Fires the incident the same way, then runs `agent/insecure-agent.sh`: opens with
 `vault read agent-registry/registration/display-name/sre-incident-agent-insecure` --
 fails, `agent with provided display_name does not exist`, because this identity was never
 registered with Vault at all. Then a static DB password and a long-lived Kubernetes
 ServiceAccount token fix checkout-service, and keep going -- reading `billing_accounts` and
-restarting billing-service, neither of which was asked for.
+restarting billing-service, neither of which was asked for. Closes with
+`kubectl get pods` in `prod-billing` showing the real rollout the standing credential just
+triggered there, then pauses once and runs `scripts/reset.sh` itself.
 
 Run both scripts back to back for direct contrast -- fire `agent/secure-demo.sh` right after
 `agent/insecure-demo.sh` (or vice versa) and the difference shows up in the actual command
-output, not narration.
+output, not narration. No manual reset needed between them -- each one cleans up after
+itself.
 
 **`agent/compare-registration.sh`** -- just the registered-vs-not-registered contrast on its
 own, no incident, no kubectl, two Vault reads back to back:
@@ -160,7 +184,11 @@ own, no incident, no kubectl, two Vault reads back to back:
 2. `vault read agent-registry/registration/display-name/sre-incident-agent-insecure` --
    `agent with provided display_name does not exist`.
 
-## Reset between rehearsals
+## Manual reset, if you ever need it
+
+Both `agent/secure-demo.sh` and `agent/insecure-demo.sh` already call this themselves at the
+end -- you shouldn't need to run it between normal rehearsals. Useful if a run is interrupted
+partway (e.g. Ctrl-C) and the incident is left live:
 
 ```bash
 ./scripts/reset.sh

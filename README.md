@@ -18,7 +18,10 @@ Two standalone demos, same incident, opposite ways to fix it:
   asked to touch.
 
 Run either one on its own, or both back to back for direct contrast -- the difference shows
-up in the actual command output, not narration.
+up in the actual command output, not narration. Each one resets the incident itself when it
+finishes, so no manual cleanup is needed between runs. There's also
+`agent/compare-registration.sh` -- just the registered-vs-not contrast on its own, two Vault
+reads, no incident involved.
 
 ## Quick start
 
@@ -48,7 +51,7 @@ vault login              # token/OIDC/userpass -- whatever your cluster's auth m
 ```
 
 Then follow **[docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)** for the full presenter run-of-show
-(setup + the single demo, exact commands). Before running the demo, run
+(setup + both demos, exact commands). Before running either demo, run
 `./scripts/preflight-check.sh` — it checks Vault, the Agent Registry entry, checkout-service's
 pods, the orders-db-proxy port-forward, and the mock-IdP JWKS tunnel in one shot, and
 auto-restarts the two that are known to drop silently between rehearsals (the port-forward and
