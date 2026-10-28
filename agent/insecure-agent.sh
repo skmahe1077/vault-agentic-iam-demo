@@ -34,4 +34,9 @@ echo "\$ kubectl -n prod-billing rollout restart deployment/billing-service"
 kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
   -n prod-billing rollout restart deployment/billing-service
 
+echo
+echo "\$ kubectl -n prod-billing get pods"
+kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
+  -n prod-billing get pods
+
 rm -f "${EPHEMERAL_KUBECONFIG}"
