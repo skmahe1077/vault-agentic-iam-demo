@@ -19,9 +19,14 @@ DIAG_TOKEN=$(RAR_PATH="database/creds/readonly-orders" RAR_CAPABILITY="read" \
 DB_CREDS=$(VAULT_TOKEN="${DIAG_TOKEN}" vault read -format=json database/creds/readonly-orders)
 DB_USER=$(echo "${DB_CREDS}" | jq -r '.data.username')
 DB_PASS=$(echo "${DB_CREDS}" | jq -r '.data.password')
+DB_TTL=$(echo "${DB_CREDS}" | jq -r '.lease_duration')
 "${SCRIPT_DIR}/../../scripts/lib/orders-psql.sh" "${DB_USER}" "${DB_PASS}" -c \
   "SELECT count(*) AS connections FROM pg_stat_activity WHERE datname = 'orders';"
-echo "(credential ${DB_USER} expires in ~3m, read-only on orders, never touches billing_accounts)"
+# The role's own default_ttl is 3m, but the *effective* TTL here is
+# min(role TTL, delegation JWT's remaining validity) -- in mock-IdP mode
+# that JWT defaults to 60s (RAR_TTL env var overrides it), so report what
+# Vault actually issued, not the role's configured ceiling.
+echo "(credential ${DB_USER} expires in ${DB_TTL}s, read-only on orders, never touches billing_accounts)"
 
 echo
 echo "=== ceiling policy caps blast radius: overreach attempt (kubernetes/creds/billing-restart-role) ==="
@@ -51,12 +56,15 @@ FIX_TOKEN=$(RAR_PATH="kubernetes/creds/checkout-restart-role" RAR_CAPABILITY="up
   "${SCRIPT_DIR}/request-delegation-token.sh")
 K8S_CREDS=$(VAULT_TOKEN="${FIX_TOKEN}" vault write -format=json kubernetes/creds/checkout-restart-role kubernetes_namespace=prod-checkout)
 K8S_TOKEN=$(echo "${K8S_CREDS}" | jq -r '.data.service_account_token')
+K8S_TTL=$(echo "${K8S_CREDS}" | jq -r '.lease_duration')
 K8S_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' --context "${CLUSTER_NAME}")
 EPHEMERAL_KUBECONFIG=$("${SCRIPT_DIR}/../../scripts/lib/ephemeral-kubeconfig.sh" "${K8S_TOKEN}" "${K8S_SERVER}")
 kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
   -n prod-checkout rollout restart deployment/checkout-service
 rm -f "${EPHEMERAL_KUBECONFIG}"
-echo "(token expires in ~10m, RBAC-limited to get/list/patch on checkout-service only)"
+# Same capping as the DB credential above -- role default is 10m, actual
+# issued TTL is min(that, delegation JWT's remaining validity).
+echo "(token expires in ${K8S_TTL}s, RBAC-limited to get/list/patch on checkout-service only)"
 
 echo
 echo "Diagnose + fix ran on task-scoped, short-lived, single-use grants. The" \

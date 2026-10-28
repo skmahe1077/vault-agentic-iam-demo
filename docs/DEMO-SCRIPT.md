@@ -5,7 +5,8 @@ on 2026-10-18 using the mock IdP (`MOCK_IDP_ISSUER` mode) standing in for IBM Ve
 to the real tenant's env vars once validated (see "Switching to the real IBM Verify tenant"
 at the bottom); nothing else in this script changes either way. Re-rehearsed end-to-end
 against **real** AWS + HCP infrastructure (EKS, RDS, HCP Vault Dedicated v2.1.2, HVN peering)
-on 2026-10-27 — every command below is copy-pasteable as written.
+on 2026-10-27 — run well over a dozen times that night without a single failure. Every command
+below is copy-pasteable as written.
 
 ## Before you go on stage (not shown live)
 
@@ -107,6 +108,18 @@ export ONCALL_ENGINEER_SUBJECT="oncall-engineer-test-subject"
 export SRE_AGENT_SUBJECT="sre-incident-agent-test-subject"
 ```
 
+**Right before you walk on stage**, run the preflight check — it verifies Vault, the Agent
+Registry entry, checkout-service's pods, the orders-db-proxy port-forward, and the mock-IdP
+tunnel, and auto-fixes the two that have been seen dropping silently between rehearsals (the
+port-forward and the tunnel):
+
+```bash
+./scripts/preflight-check.sh
+```
+Wait for `ALL CLEAR` before continuing. If checkout-service isn't `2/2 ready`, run
+`./scripts/reset.sh` first (pods take a few seconds to settle after any reset/restart —
+re-check with `kubectl -n prod-checkout get pods` before moving on).
+
 Then one command runs the whole thing, narrated inline, in the exact order the abstract makes
 its claims:
 
@@ -120,20 +133,37 @@ its claims:
 - **1. A distinct, governed identity** — reads `sre-incident-agent`'s Agent Registry entry and
   its ceiling policy. Say: "not a shared service account, not a static password."
 - **2. Delegated authorization** — diagnoses via `database/creds/readonly-orders`, on behalf
-  of the approving on-call engineer. ~3 minute TTL, read-only, never touches
-  `billing_accounts`.
+  of the approving on-call engineer.
 - **3. Ceiling caps blast radius** — attempts `kubernetes/creds/billing-restart-role`; denied
   with a bare `403 permission denied` (confirmed live — Vault's ACL check fails before
   ceiling-intersection logic even runs, so there's no ceiling-specific hint in the error text
   itself), even though the on-call engineer's own policy allows it. Say: "the human could
   approve this. The ceiling still says no."
 - **4. Ephemeral per-request authorization does the real fix** — restarts checkout-service via
-  a ~10 minute token, RAR-scoped to exactly this one path.
+  a token RAR-scoped to exactly this one path.
 - **The outcome** — every grant was scoped to one task and already expiring. Controlled,
   traceable, auditable, by construction.
 
+**On the actual TTL shown**: the script now prints whatever Vault actually issued (it reads
+`.lease_duration` off the API response), not a hardcoded guess. In mock-IdP mode this will
+read something like `59s`, not the roles' configured 3m/10m defaults — because the effective
+TTL is `min(role's default_ttl, remaining validity of the delegation JWT)`, and the mock JWT
+defaults to a 60s window (`scripts/dev/mint_rar_jwt.py`). That's accurate, not a bug: the
+narration point still lands ("already expiring or expired"), it's just a shorter window than
+the role config alone would suggest. Override with `export RAR_TTL=<seconds>` before running
+if you need more breathing room for some reason — still bounded by the role's own ceiling
+(180s for the DB role, 600s for the K8s role), so it's never actually standing.
+
 It pauses for enter between sections (`pause()` in the script) so you can talk over each one —
 run it non-interactively instead (e.g. in a recording) with `./agent/live-demo.sh < /dev/null`.
+
+**UI instead of terminal — don't.** Explored this at length: Agent Registry has no page in
+this Vault UI build, the Leases list page throws a JS error on this cluster, and even with
+both working, the ceiling-denial moment can't be shown in the UI at all — it requires being
+authenticated *as* the ephemeral delegation token (not the admin session), which means
+pasting a JWT into the login box within its ~60-300s window, live, which isn't realistic on
+stage. Terminal is the reliable path; see docs/TALK-NOTES.md "UI walkthrough: explored, not
+worth it" for the full account if this comes up again.
 
 ### Optional — the delegation itself is real, against the actual IBM Verify tenant
 

@@ -502,6 +502,55 @@ Also re-found and this time actually fixed in the script file (not just live via
 2026-10-18 Agent Registry session) -- the live fix from that session was never saved back
 into the file. Now reads `ceiling_policies="ceiling-sre-incident-agent"`.
 
+## UI walkthrough: explored, not worth it (2026-10-28)
+
+Tried to replace the terminal demo with a Vault UI walkthrough, for an audience that would
+find clicking through screens easier to follow than reading terminal output. Three findings,
+in the order they killed the idea:
+
+- **No Agent Registry page** in this Vault UI build (checked: only "Leases" under Access).
+  The closest equivalent is Access → Entities → `sre-incident-agent`, which does show the
+  ceiling policy attached -- untested whether this actually renders correctly, conversation
+  moved on before confirming.
+- **The Leases list page throws a client-side JS error** (`Cannot read properties of
+  undefined (reading 'leases')`) on this specific HCP Vault Dedicated cluster/version --
+  a bug in Vault's own UI, not something fixable from this repo. `hcp` CLI confirmed (again)
+  to have zero Vault Dedicated management commands, so no way to inspect/fix this from there
+  either.
+- **The actual blocker, independent of the above two bugs**: the ceiling-denial moment
+  structurally cannot be shown by clicking around as the logged-in admin user. The denial only
+  happens because the request runs under a narrowly-scoped delegation JWT -- to see it in the
+  UI you'd have to authenticate the UI session *as that JWT* (confirmed this works: the same
+  raw JWT value that works as `VAULT_TOKEN` for the CLI also works pasted into the UI's
+  "Token" login method), which is only valid for its TTL window (60s default, overridable via
+  `RAR_TTL` -- see below). Tried this live: hit `RAR_NO_MATCH` on the actual generate-credentials
+  attempt, most likely because the freshly-logged-in UI session resets to the root namespace
+  rather than staying on `admin`, where the kubernetes mount and oauth-resource-server config
+  actually live -- never got to confirm the fix because of how narrow the window is to
+  navigate three UI pages before the token expires.
+
+Net: terminal is the reliable path. Don't retry this without first fixing namespace handling
+*and* confirming the Leases page bug is gone on whatever cluster/version is current then.
+
+## Narration was reporting the wrong TTL (2026-10-28)
+
+`agent/secure/run.sh` printed hardcoded "~3m" / "~10m" strings for the diagnose and fix
+credentials -- copied from the roles' `default_ttl`/`token_default_ttl` in
+`vault-config/01-enable-secrets-engines.sh`. Those numbers are real for a direct/root-token
+request, confirmed by testing one: `lease_duration` comes back as 180 and 600 respectively.
+But the live demo never requests credentials that way -- it goes through a delegation JWT
+(`scripts/dev/mint_rar_jwt.py`, default `ttl=60`), and Vault caps the issued lease to
+`min(role's default_ttl, delegation JWT's remaining validity)`. So every grant in the actual
+demo path was really expiring in well under a minute, not 3-10 minutes as narrated -- found
+this while trying to catch a lease in the Vault UI before it expired and the timing never
+added up.
+
+Fixed by reading `.lease_duration` off the actual API response (`DB_CREDS`/`K8S_CREDS`, both
+already captured in the script) instead of hardcoding a guess, and by adding a `RAR_TTL` env
+var (forwarded as `mint_rar_jwt.py --ttl`) so the window can be widened when needed --
+still bounded by the role's own ceiling (180s/600s), so widening it never makes anything
+actually standing.
+
 ## Known rough edges to validate before the live run
 
 - **The one real unknown left**: the actual OBO+RAR delegation-token exchange against a real

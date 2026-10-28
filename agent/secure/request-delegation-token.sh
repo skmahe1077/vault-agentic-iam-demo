@@ -25,9 +25,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -n "${MOCK_IDP_ISSUER:-}" ]; then
   : "${ONCALL_ENGINEER_SUBJECT:?the on-call engineers mock-IdP sub, matching vault-config/03}"
   : "${SRE_AGENT_SUBJECT:?sre-incident-agents mock-IdP sub, matching vault-config/03}"
+  # mint_rar_jwt.py defaults to a 60s JWT, which caps the resulting Vault
+  # lease to min(role TTL, this JWT's remaining validity) -- so every grant
+  # in mock-IdP mode actually dies in under a minute regardless of the
+  # role's own 3m/10m default_ttl. Override with RAR_TTL (seconds) when you
+  # need more time to look at the result (e.g. the Vault UI's Leases page)
+  # -- still bounded by the role's own ceiling, so it's never actually
+  # "standing" no matter how high you set this.
   python3 "${SCRIPT_DIR}/../../scripts/dev/mint_rar_jwt.py" \
     "${MOCK_IDP_ISSUER}" "${ONCALL_ENGINEER_SUBJECT}" "${SRE_AGENT_SUBJECT}" \
-    "${RAR_PATH}" "${RAR_CAPABILITY}"
+    "${RAR_PATH}" "${RAR_CAPABILITY}" --ttl "${RAR_TTL:-60}"
   exit 0
 fi
 
