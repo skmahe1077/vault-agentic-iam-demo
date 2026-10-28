@@ -15,12 +15,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "=== delegated authorization: diagnosing (database/creds/readonly-orders) ==="
 DIAG_TOKEN=$(RAR_PATH="database/creds/readonly-orders" RAR_CAPABILITY="read" \
-  "${SCRIPT_DIR}/request-delegation-token.sh")
+  "${SCRIPT_DIR}/../scripts/lib/request-delegation-token.sh")
 DB_CREDS=$(VAULT_TOKEN="${DIAG_TOKEN}" vault read -format=json database/creds/readonly-orders)
 DB_USER=$(echo "${DB_CREDS}" | jq -r '.data.username')
 DB_PASS=$(echo "${DB_CREDS}" | jq -r '.data.password')
 DB_TTL=$(echo "${DB_CREDS}" | jq -r '.lease_duration')
-"${SCRIPT_DIR}/../../scripts/lib/orders-psql.sh" "${DB_USER}" "${DB_PASS}" -c \
+"${SCRIPT_DIR}/../scripts/lib/orders-psql.sh" "${DB_USER}" "${DB_PASS}" -c \
   "SELECT count(*) AS connections FROM pg_stat_activity WHERE datname = 'orders';"
 # The role's own default_ttl is 3m, but the *effective* TTL here is
 # min(role TTL, delegation JWT's remaining validity) -- in mock-IdP mode
@@ -34,7 +34,7 @@ echo "Requesting a delegation token scoped to billing-restart-role -- oncall-eng
      "own policy allows this, but the agent's ceiling policy does not."
 set +e
 OVERREACH_TOKEN=$(RAR_PATH="kubernetes/creds/billing-restart-role" RAR_CAPABILITY="update" \
-  "${SCRIPT_DIR}/request-delegation-token.sh")
+  "${SCRIPT_DIR}/../scripts/lib/request-delegation-token.sh")
 RESULT=$(VAULT_TOKEN="${OVERREACH_TOKEN}" vault write kubernetes/creds/billing-restart-role kubernetes_namespace=prod-billing 2>&1)
 STATUS=$?
 set -e
@@ -53,12 +53,12 @@ echo "=== ephemeral per-request authorization: fixing checkout-service (kubernet
 # database engine's plain GET above. A read-only RAR/ceiling/policy here
 # gets a bare "permission denied" with no ceiling-specific hint.
 FIX_TOKEN=$(RAR_PATH="kubernetes/creds/checkout-restart-role" RAR_CAPABILITY="update" \
-  "${SCRIPT_DIR}/request-delegation-token.sh")
+  "${SCRIPT_DIR}/../scripts/lib/request-delegation-token.sh")
 K8S_CREDS=$(VAULT_TOKEN="${FIX_TOKEN}" vault write -format=json kubernetes/creds/checkout-restart-role kubernetes_namespace=prod-checkout)
 K8S_TOKEN=$(echo "${K8S_CREDS}" | jq -r '.data.service_account_token')
 K8S_TTL=$(echo "${K8S_CREDS}" | jq -r '.lease_duration')
 K8S_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' --context "${CLUSTER_NAME}")
-EPHEMERAL_KUBECONFIG=$("${SCRIPT_DIR}/../../scripts/lib/ephemeral-kubeconfig.sh" "${K8S_TOKEN}" "${K8S_SERVER}")
+EPHEMERAL_KUBECONFIG=$("${SCRIPT_DIR}/../scripts/lib/ephemeral-kubeconfig.sh" "${K8S_TOKEN}" "${K8S_SERVER}")
 kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
   -n prod-checkout rollout restart deployment/checkout-service
 rm -f "${EPHEMERAL_KUBECONFIG}"

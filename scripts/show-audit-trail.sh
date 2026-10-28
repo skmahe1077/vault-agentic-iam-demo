@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Beat 6: close the loop. Pulls the Vault audit log and correlates every
-# sre-incident-agent action back to: agent identity -> grant path ->
-# capability -> expiry, newest first. Run after agent/secure/run.sh.
+# Pulls the Vault audit log and correlates every sre-incident-agent action
+# back to: agent identity -> grant path -> capability -> expiry, newest
+# first. Run after agent/secure-agent.sh.
 #
 # Audit log entries are HMAC'd (salted), not plaintext, by default -- field
 # values like usernames/passwords are hashed. That's expected and fine for

@@ -12,8 +12,8 @@
 #                                                  the agent actually does the fix
 #
 # No standing-credential anti-pattern here by design -- this demo shows only
-# the solution, end to end. (agent/insecure/run.sh still exists separately if
-# that contrast is ever wanted for a different cut of the talk.)
+# the solution, end to end. (agent/insecure-agent.sh still exists separately
+# if that contrast is ever wanted for a different cut of the talk.)
 #
 # Prereqs: everything in "Before you go on stage" in docs/DEMO-SCRIPT.md has
 # already run -- secrets engines configured, mock IdP (or real IBM Verify)
@@ -68,4 +68,4 @@ vault policy read ceiling-sre-incident-agent
 pause
 
 banner "2, 3, 4. DELEGATED AUTHORIZATION, CEILING, EPHEMERAL GRANT"
-"${SCRIPT_DIR}/secure/run.sh"
+"${SCRIPT_DIR}/secure-agent.sh"

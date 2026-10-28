@@ -41,9 +41,9 @@ banner() {
 banner "THE ANTI-PATTERN: standing, unscoped access"
 "${SCRIPT_DIR}/../scripts/trigger-incident.sh"
 eval "$("${SCRIPT_DIR}/../scripts/create-insecure-demo-credentials.sh" | grep '^export')"
-"${SCRIPT_DIR}/insecure/run.sh"
+"${SCRIPT_DIR}/insecure-agent.sh"
 pause
 
 banner "THE FIX: delegated, ceiling-capped, ephemeral authorization"
 "${SCRIPT_DIR}/../scripts/trigger-incident.sh"
-"${SCRIPT_DIR}/secure/run.sh"
+"${SCRIPT_DIR}/secure-agent.sh"

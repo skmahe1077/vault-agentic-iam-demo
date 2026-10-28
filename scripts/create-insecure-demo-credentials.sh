@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Mints the standing, broad credential beat 1 (agent/insecure/run.sh) uses
-# to dramatize the anti-pattern: a cluster-admin ServiceAccount token with
+# Mints the standing, broad credential agent/insecure-agent.sh uses to
+# dramatize the anti-pattern: a cluster-admin ServiceAccount token with
 # no expiry tied to it, no task scope, no link to Vault at all. Run once
 # per rehearsal, export the two values it prints, then run
-# agent/insecure/run.sh.
+# agent/insecure-agent.sh.
 set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-vault-agentic-iam}"

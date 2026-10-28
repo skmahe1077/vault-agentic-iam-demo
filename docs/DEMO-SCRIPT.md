@@ -90,8 +90,8 @@ No standing-credential anti-pattern in this cut of the talk — the abstract onl
 solution, so `agent/demo.sh` only shows the solution, end to end. If you want the audience to
 see the anti-pattern fail before the fix holds, run `agent/demo-contrast.sh` instead — same
 incident, fixed twice (standing credential, then Agentic IAM), self-sufficient the same way.
-Both scripts share `agent/secure/run.sh`; `demo-contrast.sh` just also runs
-`agent/insecure/run.sh` first.
+Both scripts share `agent/secure-agent.sh`; `demo-contrast.sh` just also runs
+`agent/insecure-agent.sh` first.
 
 Neither script explains the concept — every line printed is the real output of a `vault`,
 `kubectl`, or `psql` command run against the actual HCP Vault Dedicated cluster. Section
@@ -134,7 +134,7 @@ pausing between sections so you can talk over the real output:
   Agent Registry entry and its ceiling policy, live. Say: "not a shared service account, not
   a static password."
 - **`2, 3, 4. DELEGATED AUTHORIZATION, CEILING, EPHEMERAL GRANT`** — runs
-  `agent/secure/run.sh`, three things happen in order:
+  `agent/secure-agent.sh`, three things happen in order:
   - diagnoses via `database/creds/readonly-orders`, on behalf of the approving on-call
     engineer
   - attempts `kubernetes/creds/billing-restart-role`; denied with a bare

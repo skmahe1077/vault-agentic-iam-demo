@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # (proven working end-to-end against this repo's Vault, no real tenant
 # needed -- see docs/TALK-NOTES.md). Leave it unset once IBM Verify is
 # validated to use the real token-exchange call below instead. Either way
-# agent/secure/run.sh itself never changes.
+# agent/secure-agent.sh itself never changes.
 if [ -n "${MOCK_IDP_ISSUER:-}" ]; then
   : "${ONCALL_ENGINEER_SUBJECT:?the on-call engineers mock-IdP sub, matching vault-config/03}"
   : "${SRE_AGENT_SUBJECT:?sre-incident-agents mock-IdP sub, matching vault-config/03}"
@@ -32,7 +32,7 @@ if [ -n "${MOCK_IDP_ISSUER:-}" ]; then
   # need more time to look at the result (e.g. the Vault UI's Leases page)
   # -- still bounded by the role's own ceiling, so it's never actually
   # "standing" no matter how high you set this.
-  python3 "${SCRIPT_DIR}/../../scripts/dev/mint_rar_jwt.py" \
+  python3 "${SCRIPT_DIR}/../dev/mint_rar_jwt.py" \
     "${MOCK_IDP_ISSUER}" "${ONCALL_ENGINEER_SUBJECT}" "${SRE_AGENT_SUBJECT}" \
     "${RAR_PATH}" "${RAR_CAPABILITY}" --ttl "${RAR_TTL:-60}"
   exit 0

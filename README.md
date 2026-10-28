@@ -12,7 +12,8 @@ grant to one task and expires it right after.
 `agent/demo.sh` runs the whole thing as one continuous story, matching the talk abstract
 exactly: identity → delegated authorization → ceiling caps blast radius → ephemeral grant does
 the real fix, solution only. `agent/demo-contrast.sh` runs the same incident twice back to
-back -- once with a standing credential (`agent/insecure/`), once with Vault Agentic IAM -- so
+back -- once with a standing credential (`agent/insecure-agent.sh`), once with Vault Agentic
+IAM -- so
 the difference shows up in the actual command output instead of narration.
 
 ## Quick start
@@ -55,7 +56,7 @@ this repo.
 
 This demo targets **HCP Vault Dedicated** (`terraform/hcp.tf` provisions the cluster itself;
 Agent Registry needs Vault 2.1.2+, Standard/Essential tier) — there is no local Vault container
-or Vault Enterprise license in this repo. `vault-config/*.sh` and `agent/secure/run.sh` just
+or Vault Enterprise license in this repo. `vault-config/*.sh` and `agent/secure-agent.sh` just
 read `VAULT_ADDR`/`VAULT_TOKEN`/`VAULT_NAMESPACE` from the environment.
 
 Two different network paths reach the two AWS resources Vault depends on, because **HCP Vault
@@ -92,7 +93,7 @@ here). This is a known gap — see docs/TALK-NOTES.md.
 - No IBM Verify tenant needed — this demo runs entirely on **mock-IdP mode**
   (`scripts/dev/`), which proves the real Vault-side OBO+RAR mechanism without one; see
   DEMO-SCRIPT.md. The real-tenant RFC 8693 code path still exists in
-  `agent/secure/request-delegation-token.sh` but isn't part of the documented run-of-show.
+  `scripts/lib/request-delegation-token.sh` but isn't part of the documented run-of-show.
 
 ## Layout
 
@@ -104,7 +105,7 @@ here). This is a known gap — see docs/TALK-NOTES.md.
 | `vault-config/` | Secrets engines, policies, Agent Registry registration, IBM Verify config |
 | `agent/demo.sh` | Solution-only demo -- identity, delegated auth, ceiling, ephemeral grant |
 | `agent/demo-contrast.sh` | Same incident fixed twice -- standing credential, then Agentic IAM |
-| `agent/insecure/`, `agent/secure/` | The two agent variants the demo scripts are built from |
+| `agent/insecure-agent.sh`, `agent/secure-agent.sh` | The two agent variants the demo scripts are built from |
 | `scripts/preflight-check.sh` | Run before the demo -- verifies and auto-fixes the environment |
 | `scripts/` | Incident simulation, reset, audit correlation, ephemeral-kubeconfig/orders-psql helpers |
 | `scripts/dev/` | Mock IdP for rehearsing OBO+RAR without a real IBM Verify tenant |
