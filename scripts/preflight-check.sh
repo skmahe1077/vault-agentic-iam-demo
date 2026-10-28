@@ -107,7 +107,7 @@ echo
 echo "=== mock-IdP JWKS tunnel ==="
 TUNNEL_URL=""
 if pgrep -f "cloudflared tunnel --url http://localhost:${JWKS_PORT}" >/dev/null 2>&1; then
-  TUNNEL_URL=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | tail -1)
+  TUNNEL_URL=$(grep -ao 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | tail -1)
 fi
 
 if [ -n "${TUNNEL_URL}" ] && [ -n "${CURRENT_JWKS_URI}" ] && [[ "${CURRENT_JWKS_URI}" == "${TUNNEL_URL}"* ]]; then
@@ -116,7 +116,7 @@ elif [ -n "${MOCK_IDP_ISSUER:-}" ]; then
   pkill -f "cloudflared tunnel --url http://localhost:${JWKS_PORT}" 2>/dev/null || true
   cloudflared tunnel --url "http://localhost:${JWKS_PORT}" >/tmp/cloudflared.log 2>&1 &
   sleep 8
-  TUNNEL_URL=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | tail -1)
+  TUNNEL_URL=$(grep -ao 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log 2>/dev/null | tail -1)
   if [ -n "${TUNNEL_URL}" ]; then
     MOCK_ISSUER="${MOCK_IDP_ISSUER}" JWKS_PUBLIC_URL="${TUNNEL_URL}" "$(dirname "$0")/dev/configure_mock_idp.sh" >/dev/null 2>&1
     fixed "tunnel was down/stale, restarted it and reconfigured Vault (${TUNNEL_URL})"

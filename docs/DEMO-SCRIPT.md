@@ -66,7 +66,7 @@ K8S_REVIEWER_JWT=/tmp/vault-k8s-config/reviewer.jwt \
 # (no account needed) and pass the tunnel URL in as JWKS_PUBLIC_URL:
 cloudflared tunnel --url http://localhost:8787 > /tmp/cloudflared.log 2>&1 &
 sleep 8
-JWKS_PUBLIC_URL="$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log | head -1)"
+JWKS_PUBLIC_URL="$(grep -ao 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log | head -1)"
 echo "JWKS tunnel: ${JWKS_PUBLIC_URL}"
 
 export MOCK_IDP_ISSUER="https://test-tenant.verify.ibm.com/oidc/endpoint/default"
