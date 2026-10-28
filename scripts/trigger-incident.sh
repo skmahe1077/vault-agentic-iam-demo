@@ -24,7 +24,7 @@ pause
 
 for i in $(seq 1 "${LEAK_CONN_COUNT}"); do
   "${SCRIPT_DIR}/lib/orders-psql.sh" orders_admin "${ORDERS_DB_ADMIN_PASSWORD}" \
-    -c "SELECT pg_sleep(600);" &
+    -c "SELECT pg_sleep(600);" >/dev/null 2>&1 &
 done
 
 echo

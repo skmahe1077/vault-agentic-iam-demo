@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/../scripts/lib/pause.sh"
 
 [ -f /tmp/vault-session.env ] && source /tmp/vault-session.env
 if [ -f "${REPO_ROOT}/.env" ]; then
@@ -18,3 +19,6 @@ export CLUSTER_NAME="${CLUSTER_NAME:-vault-agentic-iam}"
 "${SCRIPT_DIR}/../scripts/trigger-incident.sh"
 eval "$("${SCRIPT_DIR}/../scripts/create-insecure-demo-credentials.sh" | grep '^export')"
 "${SCRIPT_DIR}/insecure-agent.sh"
+pause
+
+"${SCRIPT_DIR}/../scripts/reset.sh"

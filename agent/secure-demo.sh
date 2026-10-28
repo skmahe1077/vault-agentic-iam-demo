@@ -33,3 +33,6 @@ vault policy read ceiling-sre-incident-agent
 pause
 
 "${SCRIPT_DIR}/secure-agent.sh"
+pause
+
+"${SCRIPT_DIR}/../scripts/reset.sh"
