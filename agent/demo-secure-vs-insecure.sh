@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
-# The same incident, fixed twice -- once with a standing credential, once
-# with Vault Agentic IAM -- so the difference is in the actual command
-# output, not narration. agent/demo.sh is the solution-only cut for the
-# talk abstract; this is the side-by-side version when you want the
-# audience to see the anti-pattern fail before the fix holds.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Self-sufficient from any fresh terminal on this machine -- same pattern
-# as agent/demo.sh and scripts/preflight-check.sh.
 [ -f /tmp/vault-session.env ] && source /tmp/vault-session.env
 if [ -f "${REPO_ROOT}/.env" ]; then
   source "${REPO_ROOT}/.env"
@@ -27,23 +20,14 @@ export SRE_AGENT_SUBJECT="${SRE_AGENT_SUBJECT:-sre-incident-agent-test-subject}"
 
 pause() {
   if [ -t 0 ]; then
-    read -r -p "-- press enter -- " _ || true
+    read -r -p "" _ || true
   fi
 }
 
-banner() {
-  echo
-  echo "============================================================"
-  echo "$1"
-  echo "============================================================"
-}
-
-banner "THE ANTI-PATTERN: standing, unscoped access"
 "${SCRIPT_DIR}/../scripts/trigger-incident.sh"
 eval "$("${SCRIPT_DIR}/../scripts/create-insecure-demo-credentials.sh" | grep '^export')"
 "${SCRIPT_DIR}/insecure-agent.sh"
 pause
 
-banner "THE FIX: delegated, ceiling-capped, ephemeral authorization"
 "${SCRIPT_DIR}/../scripts/trigger-incident.sh"
 "${SCRIPT_DIR}/secure-agent.sh"

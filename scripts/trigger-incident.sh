@@ -14,18 +14,19 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 : "${ORDERS_DB_ADMIN_PASSWORD:?set to the orders-db admin password (from .env)}"
 
-echo "Opening ${LEAK_CONN_COUNT} idle connections against orders-db..."
 for i in $(seq 1 "${LEAK_CONN_COUNT}"); do
   "${SCRIPT_DIR}/lib/orders-psql.sh" orders_admin "${ORDERS_DB_ADMIN_PASSWORD}" \
     -c "SELECT pg_sleep(600);" &
 done
 
-echo "Breaking checkout-service readiness probe to induce CrashLoopBackOff..."
 kubectl config use-context "${CLUSTER_NAME}" >/dev/null
+echo
+echo "\$ kubectl -n prod-checkout patch deployment checkout-service ..."
 kubectl -n prod-checkout patch deployment checkout-service --type=json -p='[
   {"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/path", "value": "/__bad_health_path__"},
   {"op": "replace", "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/path", "value": "/__bad_health_path__"}
 ]'
 
-echo "Incident fired: checkout-service degrading, orders-db connections elevated."
-echo "Check with: kubectl -n prod-checkout get pods"
+echo
+echo "\$ kubectl -n prod-checkout get pods"
+kubectl -n prod-checkout get pods
