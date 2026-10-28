@@ -9,12 +9,11 @@ failure. Every command below is copy-pasteable as written.
 ## Setup steps (run once, not part of the demo itself)
 
 This demo targets **HCP Vault Dedicated** exclusively -- no local Vault container, no Vault
-Enterprise license. `terraform/` provisions the Vault cluster itself, a real **EKS** cluster
-(replacing the local `kind` cluster used earlier), and `orders-db` on **RDS**. HCP Vault
-Dedicated reaches EKS's public endpoint directly over the internet (IAM+RBAC authenticated --
-there's no static egress-IP list to lock it down to) and reaches RDS privately over an HVN
-peering connection -- see "Running against HCP Vault Dedicated" in README.md for why those two
-paths differ.
+Enterprise license. `terraform/` provisions the Vault cluster itself, a real **EKS** cluster,
+and `orders-db` on **RDS**. HCP Vault Dedicated reaches EKS's public endpoint directly over
+the internet (IAM+RBAC authenticated -- there's no static egress-IP list to lock it down to)
+and reaches RDS privately over an HVN peering connection -- see "Running against HCP Vault
+Dedicated" in README.md for why those two paths differ.
 
 ```bash
 cp .env.example .env            # fill in ORDERS_DB_ADMIN_PASSWORD
@@ -61,7 +60,7 @@ K8S_CA_CERT=/tmp/vault-k8s-config/ca.pem \
 K8S_REVIEWER_JWT=/tmp/vault-k8s-config/reviewer.jwt \
   ./vault-config/01-enable-secrets-engines.sh
 
-# Mock-IdP mode (today) -- swap for the real IBM_VERIFY_* values once validated.
+# Mock-IdP mode -- swap for the real IBM_VERIFY_* values if a real tenant is available.
 # The mock IdP serves its JWKS from localhost:8787, but HCP Vault Dedicated is a
 # remote cluster -- it can't reach your laptop's loopback. Tunnel the port first
 # (no account needed) and pass the tunnel URL in as JWKS_PUBLIC_URL:
@@ -84,98 +83,73 @@ vault secrets list
 vault read agent-registry/registration/entity-id/"$(vault read -field=id identity/entity/name/sre-incident-agent)"
 ```
 
-## Running the demo — one script, one continuous story
+## Running the demo
 
-No standing-credential anti-pattern in this cut of the talk — the abstract only promises the
-solution, so `agent/demo.sh` only shows the solution, end to end. If you want the audience to
-see the anti-pattern fail before the fix holds, run `agent/demo-secure-vs-insecure.sh`
-instead — same incident, fixed twice (standing credential, then Agentic IAM), self-sufficient
-the same way. Both scripts share `agent/secure-agent.sh`; `demo-secure-vs-insecure.sh` just
-also runs `agent/insecure-agent.sh` first.
+Two scripts, both self-sufficient, both printing nothing but real commands and their real
+output -- no narration, no banners. Say the talking points yourself, live, over the output;
+the terminal only shows what actually happened.
 
-Neither script explains the concept — every line printed is the real output of a `vault`,
-`kubectl`, or `psql` command run against the actual HCP Vault Dedicated cluster. Section
-labels (e.g. `=== delegated authorization: diagnosing ===`) just name which command is about
-to run; they're not narration. Say the talking points yourself, live, over the real output —
-don't expect the terminal to say them for you.
+`scripts/preflight-check.sh`, `agent/demo.sh`, and `agent/demo-secure-vs-insecure.sh` each
+source `/tmp/vault-session.env` (VAULT_ADDR/VAULT_NAMESPACE/VAULT_TOKEN, written once by
+`terraform apply`) and `.env` (ORDERS_DB_ADMIN_PASSWORD) themselves, and default the
+mock-IdP values if not already set. From any fresh terminal on this machine, just `cd` into
+the repo and run them -- no manual export block needed. (A different machine that was never
+set up won't have `/tmp/vault-session.env`; the scripts fail with a clear message telling
+you what's missing, rather than silently misbehaving.)
 
-**No manual export block needed** — both `scripts/preflight-check.sh` and `agent/demo.sh` are
-self-sufficient: they source `/tmp/vault-session.env` (VAULT_ADDR/VAULT_NAMESPACE/VAULT_TOKEN,
-written once by `terraform apply`) and `.env` (ORDERS_DB_ADMIN_PASSWORD) themselves, and
-default the mock-IdP values if not already set. From any fresh terminal *on this machine*,
-just `cd` into the repo and run them — nothing to re-export first. (A different machine that
-was never set up won't have `/tmp/vault-session.env`; both scripts fail with a clear message
-telling you what's missing rather than silently misbehaving.)
-
-**Right before running the demo**, run the preflight check — it verifies Vault, the Agent
-Registry entry, checkout-service's pods, the orders-db-proxy port-forward, and the mock-IdP
-tunnel, and auto-fixes the two that have been seen dropping silently between rehearsals (the
+Run the preflight check before the demo -- it verifies Vault, the Agent Registry entry,
+checkout-service's pods, the orders-db-proxy port-forward, and the mock-IdP tunnel, and
+auto-fixes the two that have been seen dropping silently between rehearsals (the
 port-forward and the tunnel):
 
 ```bash
 ./scripts/preflight-check.sh
 ```
 Wait for `ALL CLEAR` before continuing. If checkout-service isn't `2/2 ready`, run
-`./scripts/reset.sh` first (pods take a few seconds to settle after any reset/restart —
+`./scripts/reset.sh` first (pods take a few seconds to settle after any reset/restart --
 re-check with `kubectl -n prod-checkout get pods` before moving on).
 
-Then one command runs the whole thing, in the exact order the abstract makes its claims,
-pausing between sections so you can talk over the real output:
+**`agent/demo.sh`** -- the abstract's claims, solution only, in order:
 
 ```bash
 ./agent/demo.sh
 ```
 
-- **`SCENE: checkout-service is degrading`** — fires the incident
-  (`scripts/trigger-incident.sh`): checkout-service degrading, a connection leak against the
-  orders database. Say over it: "traditional IAM assumes a predictable human, not an
-  autonomous agent."
-- **`1. A DISTINCT, GOVERNED IDENTITY -- Agent Registry`** — reads `sre-incident-agent`'s
-  Agent Registry entry and its ceiling policy, live. Say: "not a shared service account, not
-  a static password."
-- **`2, 3, 4. DELEGATED AUTHORIZATION, CEILING, EPHEMERAL GRANT`** — runs
-  `agent/secure-agent.sh`, three things happen in order:
-  - diagnoses via `database/creds/readonly-orders`, on behalf of the approving on-call
-    engineer
-  - attempts `kubernetes/creds/billing-restart-role`; denied with a bare
-    `403 permission denied` (confirmed live — Vault's ACL check fails before
-    ceiling-intersection logic even runs, so there's no ceiling-specific hint in the error
-    text itself), even though the on-call engineer's own policy allows it. Say: "the human
-    could approve this. The ceiling still says no."
-  - fixes checkout-service via a token RAR-scoped to exactly this one path, real TTL printed
-    on screen. Say: "every grant above was scoped to one task and already expiring."
+1. Fires the incident (`scripts/trigger-incident.sh`): a connection leak against the orders
+   database, then a broken readiness probe on checkout-service.
+2. `vault read agent-registry/registration/entity-id/...` -- `sre-incident-agent`'s real
+   Agent Registry entry. `vault policy read ceiling-sre-incident-agent` -- its ceiling.
+3. Runs `agent/secure-agent.sh`:
+   - `vault read database/creds/readonly-orders` -- a credential minted on the spot, used to
+     diagnose via `psql`.
+   - `vault write kubernetes/creds/billing-restart-role` -- denied, `403 permission denied`.
+     The on-call engineer's own policy allows this; the ceiling doesn't.
+   - `vault write kubernetes/creds/checkout-restart-role` -- succeeds, real `lease_duration`
+     visible in the JSON response, used to restart checkout-service.
 
-**On the actual TTL shown**: the script now prints whatever Vault actually issued (it reads
-`.lease_duration` off the API response), not a hardcoded guess. In mock-IdP mode this will
-read something like `59s`, not the roles' configured 3m/10m defaults — because the effective
-TTL is `min(role's default_ttl, remaining validity of the delegation JWT)`, and the mock JWT
-defaults to a 60s window (`scripts/dev/mint_rar_jwt.py`). That's accurate, not a bug: the
-narration point still lands ("already expiring or expired"), it's just a shorter window than
-the role config alone would suggest. Override with `export RAR_TTL=<seconds>` before running
-if you need more breathing room for some reason — still bounded by the role's own ceiling
-(180s for the DB role, 600s for the K8s role), so it's never actually standing.
+Pauses for enter between the three sections above (`pause()` in the script) so you can talk
+over each one -- run non-interactively instead (e.g. for a recording) with
+`./agent/demo.sh < /dev/null`.
 
-It pauses for enter between sections (`pause()` in the script) so you can talk over each one —
-run it non-interactively instead (e.g. in a recording) with `./agent/demo.sh < /dev/null`.
-
-### `agent/demo-secure-vs-insecure.sh` — the comparison cut
-
-Same setup, same preflight check, but this one runs the incident twice:
+**`agent/demo-secure-vs-insecure.sh`** -- the same incident, fixed twice, for direct
+contrast:
 
 ```bash
 ./agent/demo-secure-vs-insecure.sh
 ```
 
-- **`THE ANTI-PATTERN: standing, unscoped access`** — fires the incident, then runs
-  `agent/insecure-agent.sh`: a static DB password and a long-lived, broad Kubernetes
-  ServiceAccount token fix checkout-service, then keep going — reads `billing_accounts` and
-  restarts billing-service, neither of which was asked for. Say: "same credential did all
-  four actions. No identity, no task scope, no expiry."
-- **`THE FIX: delegated, ceiling-capped, ephemeral authorization`** — fires the incident
-  again, then runs `agent/secure-agent.sh` (same three steps as `demo.sh`'s last section:
-  diagnose, the denied overreach, the ephemeral fix).
+1. Fires the incident, then runs `agent/insecure-agent.sh`: opens with
+   `vault read agent-registry/registration/display-name/sre-incident-agent-insecure` --
+   fails, `agent with provided display_name does not exist`, because this identity was never
+   registered with Vault at all. Then a static DB password and a long-lived Kubernetes
+   ServiceAccount token fix checkout-service, and keep going -- reading `billing_accounts`
+   and restarting billing-service, neither of which was asked for.
+2. Fires the incident again, then runs `agent/secure-agent.sh` (same three steps as
+   `demo.sh` above).
 
-Same `< /dev/null` trick works here for a non-interactive/recorded run.
+Same `< /dev/null` trick works here for a non-interactive run.
+
+Both scripts share `agent/secure-agent.sh`.
 
 **UI instead of terminal — don't.** Explored this at length: Agent Registry has no page in
 this Vault UI build, the Leases list page throws a JS error on this cluster, and even with
