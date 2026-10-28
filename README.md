@@ -9,7 +9,7 @@ using Vault Enterprise's Agentic IAM: a distinct **Agent Registry** identity, **
 requested or approved, and **ephemeral per-request authorization** (RAR) that scopes every
 grant to one task and expires it right after.
 
-`agent/live-demo.sh` runs the whole thing as one continuous story, matching the talk abstract
+`agent/demo.sh` runs the whole thing as one continuous story, matching the talk abstract
 exactly: identity → delegated authorization → ceiling caps blast radius → ephemeral grant does
 the real fix. `agent/insecure/` is kept separately — a static, standing credential that can
 touch anything — for a different cut of the talk that wants that contrast explicitly.
@@ -101,8 +101,8 @@ here). This is a known gap — see docs/TALK-NOTES.md.
 | `sql/` | orders-db schema, loaded by `scripts/load-orders-schema.sh` |
 | `k8s_manifests/` | checkout-service/billing-service + RBAC for the EKS cluster, orders-db-proxy |
 | `vault-config/` | Secrets engines, policies, Agent Registry registration, IBM Verify config |
-| `agent/live-demo.sh` | The single demo -- identity, delegated auth, ceiling, ephemeral grant |
-| `agent/insecure/`, `agent/secure/` | The two agent variants `live-demo.sh` is built from |
+| `agent/demo.sh` | The single demo -- identity, delegated auth, ceiling, ephemeral grant |
+| `agent/insecure/`, `agent/secure/` | The two agent variants `demo.sh` is built from |
 | `scripts/preflight-check.sh` | Run before the demo -- verifies and auto-fixes the environment |
 | `scripts/` | Incident simulation, reset, audit correlation, ephemeral-kubeconfig/orders-psql helpers |
 | `scripts/dev/` | Mock IdP for rehearsing OBO+RAR without a real IBM Verify tenant |

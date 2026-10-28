@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Run this before walking on stage. Checks everything that's been seen to
+# Run this before running the demo. Checks everything that's been seen to
 # drop silently between rehearsals (the orders-db-proxy port-forward, the
 # mock-IdP JWKS tunnel) and fixes those two automatically since they're
 # local-only and safe to restart. Everything else is reported with the
 # exact command to fix it -- this script never touches Vault policy/data
 # or cluster workload state, only local plumbing.
 #
-# Usage: source the same env vars agent/live-demo.sh needs, then run this.
+# Usage: source the same env vars agent/demo.sh needs, then run this.
 set -uo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-vault-agentic-iam}"
@@ -117,9 +117,9 @@ fi
 echo
 echo "============================================================"
 if [ "${FAIL}" -eq 0 ]; then
-  echo "ALL CLEAR: ${PASS} checks passed. Go run ./agent/live-demo.sh"
+  echo "ALL CLEAR: ${PASS} checks passed. Go run ./agent/demo.sh"
 else
-  echo "${FAIL} check(s) failed, ${PASS} passed -- fix those before walking on stage"
+  echo "${FAIL} check(s) failed, ${PASS} passed -- fix those before running the demo"
 fi
 echo "============================================================"
 

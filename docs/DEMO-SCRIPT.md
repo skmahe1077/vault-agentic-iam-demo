@@ -119,7 +119,7 @@ Then one command runs the whole thing, narrated inline, in the exact order the a
 its claims:
 
 ```bash
-./agent/live-demo.sh
+./agent/demo.sh
 ```
 
 - **The gap** — traditional IAM assumes a predictable human, not an autonomous agent.
@@ -150,7 +150,7 @@ if you need more breathing room for some reason — still bounded by the role's 
 (180s for the DB role, 600s for the K8s role), so it's never actually standing.
 
 It pauses for enter between sections (`pause()` in the script) so you can talk over each one —
-run it non-interactively instead (e.g. in a recording) with `./agent/live-demo.sh < /dev/null`.
+run it non-interactively instead (e.g. in a recording) with `./agent/demo.sh < /dev/null`.
 
 **UI instead of terminal — don't.** Explored this at length: Agent Registry has no page in
 this Vault UI build, the Leases list page throws a JS error on this cluster, and even with
