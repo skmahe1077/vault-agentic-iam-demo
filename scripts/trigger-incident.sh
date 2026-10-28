@@ -27,12 +27,11 @@ for i in $(seq 1 "${LEAK_CONN_COUNT}"); do
     -c "SELECT pg_sleep(600);" >/dev/null 2>&1 &
 done
 
+PATCH='[{"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/path", "value": "/__bad_health_path__"}, {"op": "replace", "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/path", "value": "/__bad_health_path__"}]'
+
 echo
-echo "\$ kubectl -n prod-checkout patch deployment checkout-service ..."
-kubectl -n prod-checkout patch deployment checkout-service --type=json -p='[
-  {"op": "replace", "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/path", "value": "/__bad_health_path__"},
-  {"op": "replace", "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/path", "value": "/__bad_health_path__"}
-]'
+echo "\$ kubectl -n prod-checkout patch deployment checkout-service --type=json -p='${PATCH}'"
+kubectl -n prod-checkout patch deployment checkout-service --type=json -p="${PATCH}"
 pause
 
 echo
