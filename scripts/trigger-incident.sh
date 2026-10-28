@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Beat 0: fire the incident.
+# Opening scene: fire the incident.
 # 1) Hold a pile of idle connections open against orders-db to simulate the
 #    connection-pool exhaustion that the diagnose step (database/creds/readonly-orders)
 #    will reveal.

@@ -88,9 +88,13 @@ vault secrets list
 vault read agent-registry/registration/entity-id/"$(vault read -field=id identity/entity/name/sre-incident-agent)"
 ```
 
-## On stage — the six beats
+## On stage — one script, one continuous story
 
-Export these once per terminal session (keeps every beat's commands short):
+No standing-credential anti-pattern in this cut of the talk — the abstract only promises the
+solution, so the demo only shows the solution, end to end. (`agent/insecure/run.sh` still
+exists if that contrast is ever wanted for a different version of this talk.)
+
+Export these once per terminal session:
 
 ```bash
 export VAULT_ADDR="$(terraform -chdir=terraform output -raw vault_public_endpoint_url)"
@@ -103,35 +107,35 @@ export ONCALL_ENGINEER_SUBJECT="oncall-engineer-test-subject"
 export SRE_AGENT_SUBJECT="sre-incident-agent-test-subject"
 ```
 
-### Beat 0 — fire the incident
+Then one command runs the whole thing, narrated inline, in the exact order the abstract makes
+its claims:
 
 ```bash
-./scripts/trigger-incident.sh
-kubectl --context vault-agentic-iam -n prod-checkout get pods   # watch READY/RESTARTS climb
+./agent/live-demo.sh
 ```
-Say: "checkout-service is degrading — a connection leak against the orders database, and the
-pod can't stay healthy."
 
-### Beat 1 — the anti-pattern: standing, unscoped access
+- **The gap** — traditional IAM assumes a predictable human, not an autonomous agent.
+- **Scene** — fires the incident (`scripts/trigger-incident.sh`): checkout-service degrading,
+  a connection leak against the orders database.
+- **1. A distinct, governed identity** — reads `sre-incident-agent`'s Agent Registry entry and
+  its ceiling policy. Say: "not a shared service account, not a static password."
+- **2. Delegated authorization** — diagnoses via `database/creds/readonly-orders`, on behalf
+  of the approving on-call engineer. ~3 minute TTL, read-only, never touches
+  `billing_accounts`.
+- **3. Ceiling caps blast radius** — attempts `kubernetes/creds/billing-restart-role`; denied
+  with a bare `403 permission denied` (confirmed live — Vault's ACL check fails before
+  ceiling-intersection logic even runs, so there's no ceiling-specific hint in the error text
+  itself), even though the on-call engineer's own policy allows it. Say: "the human could
+  approve this. The ceiling still says no."
+- **4. Ephemeral per-request authorization does the real fix** — restarts checkout-service via
+  a ~10 minute token, RAR-scoped to exactly this one path.
+- **The outcome** — every grant was scoped to one task and already expiring. Controlled,
+  traceable, auditable, by construction.
 
-```bash
-eval "$(./scripts/create-insecure-demo-credentials.sh | grep '^export')"
-./agent/insecure/run.sh
-```
-Say, pointing at the last two blocks of output: "same static credential that fixed the
-incident just read billing card data and restarted billing-service — neither one was asked
-for. No identity, no task scope, no expiry, no audit trail tying any of it back to this
-incident."
+It pauses for enter between sections (`pause()` in the script) so you can talk over each one —
+run it non-interactively instead (e.g. in a recording) with `./agent/live-demo.sh < /dev/null`.
 
-### Beat 2 — the agent gets a real, distinct identity
-
-```bash
-vault read agent-registry/registration/entity-id/"$(vault read -field=id identity/entity/name/sre-incident-agent)"
-```
-Say: "sre-incident-agent is a real Vault entity, registered in the Agent Registry with its
-own ceiling policy — not a shared service account, not a static password."
-
-### Beat 2b (optional) — the delegation itself is real, against the actual IBM Verify tenant
+### Optional — the delegation itself is real, against the actual IBM Verify tenant
 
 ```bash
 ./scripts/dev/real-ibmverify-obo-demo.sh
@@ -140,31 +144,15 @@ Requires `.env.ibmverify.local` filled in and the one-time `verify-real` profile
 `*-real` entity-alias setup from `docs/TALK-NOTES.md`. Say: "this isn't simulated — that's a
 real client-credentials grant, a real password grant, and a real RFC 8693 token exchange
 against our actual IBM Verify tenant. Vault resolves both identities from it for real." Then
-point out in the output that it's missing the RAR scoping beats 4–5 will show — explain that
-piece is demonstrated separately (next beats) because of a gap in HashiCorp's own current
-IBM Verify integration guide, not a limitation of Vault itself.
+point out in the output that it's missing the RAR scoping the main demo shows — explain that
+piece is demonstrated separately because of a gap in HashiCorp's own current IBM Verify
+integration guide, not a limitation of Vault itself.
 
-### Beats 3–5 — delegated, ceiling-capped, ephemeral grant does the real fix
-
-```bash
-./agent/secure/run.sh
-```
-This single script runs all three beats:
-- **Beat 3 (delegated authorization)**: diagnoses via `database/creds/readonly-orders`, on
-  behalf of the approving on-call engineer.
-- **Beat 4 (ceiling blocks overreach)**: attempts `kubernetes/creds/billing-restart-role` —
-  denied with a bare `403 permission denied` (confirmed live, twice -- Vault's ACL check
-  fails before ceiling-intersection logic even runs, so there's no ceiling-specific hint in
-  the error text itself), even though the on-call engineer's own policy allows it. Say: "the
-  human could approve this. The ceiling still says no."
-- **Beat 5 (ephemeral grant fixes it)**: restarts checkout-service via a token minted and
-  expiring in minutes, scoped by RAR to exactly this one Vault path.
-
-### Beat 6 — audit closes the loop
+### Optional — audit closes the loop
 
 Known gap against HCP Vault Dedicated (reads a local `file` audit device that doesn't exist
-there -- see docs/TALK-NOTES.md). Omit this beat until that's resolved, or narrate the
-mechanism verbally using the fields below.
+there -- see docs/TALK-NOTES.md). Narrate the mechanism verbally instead using the fields
+below, or fold this line into "the outcome" close of `agent/live-demo.sh`.
 
 ```bash
 ./scripts/show-audit-trail.sh

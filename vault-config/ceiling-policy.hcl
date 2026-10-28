@@ -9,4 +9,4 @@ path "kubernetes/creds/checkout-restart-role" {
   capabilities = ["update"]
 }
 
-# billing-restart-role deliberately absent -- beat 4's overreach target.
+# billing-restart-role deliberately absent -- the demo's overreach target.
