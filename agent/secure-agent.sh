@@ -4,6 +4,7 @@ set -euo pipefail
 CLUSTER_NAME="${CLUSTER_NAME:-vault-agentic-iam}"
 export VAULT_ADDR="${VAULT_ADDR:-http://127.0.0.1:8200}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/../scripts/lib/pause.sh"
 
 echo
 echo "\$ vault read database/creds/readonly-orders"
@@ -13,11 +14,13 @@ DB_CREDS=$(VAULT_TOKEN="${DIAG_TOKEN}" vault read -format=json database/creds/re
 echo "${DB_CREDS}" | jq 'del(.data.password)'
 DB_USER=$(echo "${DB_CREDS}" | jq -r '.data.username')
 DB_PASS=$(echo "${DB_CREDS}" | jq -r '.data.password')
+pause
 
 echo
 echo "\$ psql -U ${DB_USER} -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'orders';\""
 "${SCRIPT_DIR}/../scripts/lib/orders-psql.sh" "${DB_USER}" "${DB_PASS}" -c \
   "SELECT count(*) AS connections FROM pg_stat_activity WHERE datname = 'orders';"
+pause
 
 echo
 echo "\$ vault write kubernetes/creds/billing-restart-role kubernetes_namespace=prod-billing"
@@ -31,6 +34,7 @@ if [ ${STATUS} -eq 0 ]; then
   echo "UNEXPECTED: overreach succeeded -- ceiling policy is not holding. Investigate."
   exit 1
 fi
+pause
 
 echo
 echo "\$ vault write kubernetes/creds/checkout-restart-role kubernetes_namespace=prod-checkout"
@@ -41,22 +45,26 @@ echo "${K8S_CREDS}" | jq 'del(.data.service_account_token)'
 K8S_TOKEN=$(echo "${K8S_CREDS}" | jq -r '.data.service_account_token')
 K8S_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' --context "${CLUSTER_NAME}")
 EPHEMERAL_KUBECONFIG=$("${SCRIPT_DIR}/../scripts/lib/ephemeral-kubeconfig.sh" "${K8S_TOKEN}" "${K8S_SERVER}")
+pause
 
 echo
 echo "\$ kubectl -n prod-checkout rollout restart deployment/checkout-service"
 kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
   -n prod-checkout rollout restart deployment/checkout-service
+pause
 
 echo
 echo "\$ kubectl -n prod-checkout get deployment checkout-service"
 kubectl --kubeconfig="${EPHEMERAL_KUBECONFIG}" \
   -n prod-checkout get deployment checkout-service
+pause
 
 rm -f "${EPHEMERAL_KUBECONFIG}"
 
 echo
 echo "\$ kubectl -n prod-checkout get pods"
 kubectl --context "${CLUSTER_NAME}" -n prod-checkout get pods
+pause
 
 echo
 echo "\$ kubectl -n prod-billing get pods"

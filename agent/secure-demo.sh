@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/../scripts/lib/pause.sh"
 
 [ -f /tmp/vault-session.env ] && source /tmp/vault-session.env
 if [ -f "${REPO_ROOT}/.env" ]; then
@@ -18,14 +19,7 @@ export SRE_AGENT_SUBJECT="${SRE_AGENT_SUBJECT:-sre-incident-agent-test-subject}"
 : "${VAULT_TOKEN:?set VAULT_TOKEN, or confirm /tmp/vault-session.env exists on this machine}"
 : "${ORDERS_DB_ADMIN_PASSWORD:?set to the orders-db admin password, or confirm .env exists at the repo root}"
 
-pause() {
-  if [ -t 0 ]; then
-    read -r -p "" _ || true
-  fi
-}
-
 "${SCRIPT_DIR}/../scripts/trigger-incident.sh"
-pause
 
 echo
 echo "\$ vault read agent-registry/registration/entity-id/\$AGENT_ENTITY_ID"
