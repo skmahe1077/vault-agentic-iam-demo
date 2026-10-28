@@ -6,10 +6,23 @@
 # exact command to fix it -- this script never touches Vault policy/data
 # or cluster workload state, only local plumbing.
 #
-# Usage: source the same env vars agent/demo.sh needs, then run this.
+# Usage: just run it -- self-sufficient the same way agent/demo.sh is, see
+# the block below.
 set -uo pipefail
 
-CLUSTER_NAME="${CLUSTER_NAME:-vault-agentic-iam}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+[ -f /tmp/vault-session.env ] && source /tmp/vault-session.env
+if [ -f "${REPO_ROOT}/.env" ]; then
+  source "${REPO_ROOT}/.env"
+  export ORDERS_DB_ADMIN_PASSWORD
+fi
+export CLUSTER_NAME="${CLUSTER_NAME:-vault-agentic-iam}"
+export MOCK_IDP_ISSUER="${MOCK_IDP_ISSUER:-https://test-tenant.verify.ibm.com/oidc/endpoint/default}"
+export ONCALL_ENGINEER_SUBJECT="${ONCALL_ENGINEER_SUBJECT:-oncall-engineer-test-subject}"
+export SRE_AGENT_SUBJECT="${SRE_AGENT_SUBJECT:-sre-incident-agent-test-subject}"
+
 JWKS_PORT="${JWKS_PORT:-8787}"
 PASS=0
 FAIL=0

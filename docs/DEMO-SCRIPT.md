@@ -90,18 +90,13 @@ No standing-credential anti-pattern in this cut of the talk — the abstract onl
 solution, so the demo only shows the solution, end to end. (`agent/insecure/run.sh` still
 exists if that contrast is ever wanted for a different version of this talk.)
 
-Export these once per terminal session:
-
-```bash
-export VAULT_ADDR="$(terraform -chdir=terraform output -raw vault_public_endpoint_url)"
-export VAULT_NAMESPACE=admin
-export VAULT_TOKEN="$(terraform -chdir=terraform output -raw vault_admin_token)"  # don't show this on a shared screen
-export CLUSTER_NAME=vault-agentic-iam
-source .env && export ORDERS_DB_ADMIN_PASSWORD
-export MOCK_IDP_ISSUER="https://test-tenant.verify.ibm.com/oidc/endpoint/default"
-export ONCALL_ENGINEER_SUBJECT="oncall-engineer-test-subject"
-export SRE_AGENT_SUBJECT="sre-incident-agent-test-subject"
-```
+**No manual export block needed** — both `scripts/preflight-check.sh` and `agent/demo.sh` are
+self-sufficient: they source `/tmp/vault-session.env` (VAULT_ADDR/VAULT_NAMESPACE/VAULT_TOKEN,
+written once by `terraform apply`) and `.env` (ORDERS_DB_ADMIN_PASSWORD) themselves, and
+default the mock-IdP values if not already set. From any fresh terminal *on this machine*,
+just `cd` into the repo and run them — nothing to re-export first. (A different machine that
+was never set up won't have `/tmp/vault-session.env`; both scripts fail with a clear message
+telling you what's missing rather than silently misbehaving.)
 
 **Right before running the demo**, run the preflight check — it verifies Vault, the Agent
 Registry entry, checkout-service's pods, the orders-db-proxy port-forward, and the mock-IdP

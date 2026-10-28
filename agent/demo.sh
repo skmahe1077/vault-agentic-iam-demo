@@ -20,10 +20,28 @@
 # configured, identities registered. This script is the on-stage part only.
 set -euo pipefail
 
-CLUSTER_NAME="${CLUSTER_NAME:-vault-agentic-iam}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-: "${ORDERS_DB_ADMIN_PASSWORD:?set to the orders-db admin password (from .env)}"
+# Self-sufficient from any fresh terminal on this machine: pulls in the
+# Vault session (VAULT_ADDR/VAULT_NAMESPACE/VAULT_TOKEN, written once by
+# terraform apply) and .env (ORDERS_DB_ADMIN_PASSWORD) if present, so you
+# don't have to re-export them by hand every time. Falls through to the
+# precondition checks below if either file is missing -- e.g. a different
+# machine that was never set up, or /tmp/vault-session.env got cleared.
+[ -f /tmp/vault-session.env ] && source /tmp/vault-session.env
+if [ -f "${REPO_ROOT}/.env" ]; then
+  source "${REPO_ROOT}/.env"
+  export ORDERS_DB_ADMIN_PASSWORD
+fi
+export CLUSTER_NAME="${CLUSTER_NAME:-vault-agentic-iam}"
+export MOCK_IDP_ISSUER="${MOCK_IDP_ISSUER:-https://test-tenant.verify.ibm.com/oidc/endpoint/default}"
+export ONCALL_ENGINEER_SUBJECT="${ONCALL_ENGINEER_SUBJECT:-oncall-engineer-test-subject}"
+export SRE_AGENT_SUBJECT="${SRE_AGENT_SUBJECT:-sre-incident-agent-test-subject}"
+
+: "${VAULT_ADDR:?set VAULT_ADDR, or confirm /tmp/vault-session.env exists on this machine}"
+: "${VAULT_TOKEN:?set VAULT_TOKEN, or confirm /tmp/vault-session.env exists on this machine}"
+: "${ORDERS_DB_ADMIN_PASSWORD:?set to the orders-db admin password, or confirm .env exists at the repo root}"
 
 pause() {
   if [ -t 0 ]; then
