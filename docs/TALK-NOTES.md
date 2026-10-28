@@ -551,10 +551,69 @@ var (forwarded as `mint_rar_jwt.py --ttl`) so the window can be widened when nee
 still bounded by the role's own ceiling (180s/600s), so widening it never makes anything
 actually standing.
 
+## Split into standalone demos, narration stripped to real commands only (2026-10-28)
+
+Restructured on explicit request ("one file should show the secure way, other shows the
+insecure way") -- the combined comparison script went through two names
+(`demo-secure-vs-insecure.sh`, then `incident-response-demo.sh`) before landing on two
+separate files:
+
+- `agent/secure-demo.sh` (renamed from `agent/demo.sh`) -- fires the incident, shows the
+  Agent Registry entry + ceiling, runs `agent/secure-agent.sh`.
+- `agent/insecure-demo.sh` (new) -- fires the incident, mints the static credentials, runs
+  `agent/insecure-agent.sh`. First half of the removed combined script, now standalone.
+- `agent/secure/run.sh` and `agent/secure/request-delegation-token.sh` flattened out of
+  their subdirectories: `agent/secure-agent.sh` / `agent/insecure-agent.sh` (both directly
+  under `agent/`, dropping the `agent/insecure/run.sh` vs `agent/secure/run.sh` naming
+  collision -- two files both literally called `run.sh`), and
+  `scripts/lib/request-delegation-token.sh` (moved alongside the repo's other
+  `scripts/lib/` helpers, since it's a shared utility, not agent-specific).
+- `agent/compare-registration.sh` (new) -- just the two Agent Registry lookups
+  (`sre-incident-agent`'s real registration vs. `sre-incident-agent-insecure`'s
+  "does not exist") back to back, no incident, no kubectl, no DB.
+
+Separately, corrected again (twice) on "why does the terminal explain all this" -- the first
+narration-removal pass (see "Narration was reporting the wrong TTL" below, and the UI section
+above) had already dropped `cat <<EOF` prose blocks and closing summary sentences, but still
+left section banners (`"=== delegated authorization: diagnosing ==="`, `"SCENE: checkout-
+service is degrading"`) and inline descriptive strings (`"never touches billing_accounts"`,
+`"oncall-engineer's own policy allows this, but..."`). Those are commentary too, not command
+output. Every script in the chain now prints only `echo "$ <command>"` immediately followed
+by that command's real output -- nothing else. Extracted the shared `pause()` helper into
+`scripts/lib/pause.sh` so `scripts/trigger-incident.sh` and both agent scripts can pause
+between their own commands too, not just at the demo-wrapper level --
+`scripts/trigger-incident.sh` now opens with a baseline `kubectl get pods` before touching
+anything, so there's a real "before" to contrast against the "after."
+
+Two more fixes landed inside this same pass:
+- `agent/secure-agent.sh`'s post-restart check tried `kubectl get pods` through the
+  ephemeral token and got a real `Forbidden` -- the Vault-issued ServiceAccount's RBAC
+  (`k8s_manifests/checkout-restart-role.yaml`) only grants `get/list/patch` on the
+  Deployment object, nothing on pods. Switched to `kubectl get deployment
+  checkout-service`, which the token can actually do -- an accidental but fitting live
+  proof of "RBAC-limited to checkout-service only." Added two more `get pods` calls after
+  that, on the normal cluster context, showing both namespaces: checkout-service restarted,
+  billing-service untouched, same age as before.
+- Default delegation JWT TTL raised from 60s to 300s (`RAR_TTL` in
+  `scripts/lib/request-delegation-token.sh`), and the database role's own `default_ttl`
+  bumped from `3m` to `5m` to match (`vault-config/01-enable-secrets-engines.sh`) --
+  otherwise `min(role, JWT)` would have silently capped the diagnose credential back down to
+  180s regardless of the JWT change. Both pushed live to the running cluster, not just the
+  setup script. Real purpose: enough time to talk through each step live without a lease
+  expiring mid-explanation.
+
+Both `agent/secure-demo.sh` and `agent/insecure-demo.sh` now call `scripts/reset.sh`
+themselves at the end (after a final pause) -- no separate manual cleanup step. That also
+surfaced one more fix: the 18 backgrounded `pg_sleep` connections in
+`scripts/trigger-incident.sh` print their own `FATAL: terminating connection` chatter when
+`reset.sh` kills them, which only mattered cosmetically once reset started running
+automatically right after the demo instead of as a separate, later step -- redirected their
+output to `/dev/null`.
+
 ## Known rough edges to validate before the live run
 
 - **The one real unknown left**: the actual OBO+RAR delegation-token exchange against a real
-  IBM Verify tenant (`agent/secure/request-delegation-token.sh`). Every piece downstream of
+  IBM Verify tenant (`scripts/lib/request-delegation-token.sh`). Every piece downstream of
   receiving that JWT (both secrets engines with corrected capabilities, both ceiling-relevant
   RBAC paths, the audit correlation, the TTL-capping behavior) is now proven live. What's
   *not* yet proven is IBM Verify's token endpoint accepting the RFC 8693 token-exchange grant
@@ -563,6 +622,6 @@ actually standing.
   fallback shape to compare against if IBM Verify's endpoint wants something different.
 - `vault kv` commands fail OBO preflight checks — every script above uses
   `vault read`/`vault write`, not `vault kv`, intentionally.
-- RAR delegation tokens are short-lived (~30s); `agent/secure/run.sh`
-  requests a fresh one per Vault action rather than reusing one across
-  both the diagnose and fix steps.
+- RAR delegation tokens are short-lived (default 300s as of 2026-10-28, was 60s);
+  `agent/secure-agent.sh` requests a fresh one per Vault action rather than reusing one
+  across both the diagnose and fix steps.
