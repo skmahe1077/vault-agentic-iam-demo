@@ -148,6 +148,18 @@ Run both scripts back to back for direct contrast -- fire `agent/secure-demo.sh`
 `agent/insecure-demo.sh` (or vice versa) and the difference shows up in the actual command
 output, not narration.
 
+**`agent/compare-registration.sh`** -- just the registered-vs-not-registered contrast on its
+own, no incident, no kubectl, two Vault reads back to back:
+
+```bash
+./agent/compare-registration.sh
+```
+
+1. `vault read agent-registry/registration/entity-id/...` -- `sre-incident-agent`'s real
+   registration.
+2. `vault read agent-registry/registration/display-name/sre-incident-agent-insecure` --
+   `agent with provided display_name does not exist`.
+
 ## Reset between rehearsals
 
 ```bash

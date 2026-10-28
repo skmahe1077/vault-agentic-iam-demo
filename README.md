@@ -109,6 +109,7 @@ here). This is a known gap — see docs/TALK-NOTES.md.
 | `vault-config/` | Secrets engines, policies, Agent Registry registration, IBM Verify config |
 | `agent/secure-demo.sh` | The secure way -- identity, delegated auth, ceiling, ephemeral grant |
 | `agent/insecure-demo.sh` | The insecure way -- a standing credential, no Vault identity, no limits |
+| `agent/compare-registration.sh` | Just the registered-vs-not contrast, no incident, no kubectl |
 | `agent/insecure-agent.sh`, `agent/secure-agent.sh` | The bare mechanics each demo script runs |
 | `scripts/preflight-check.sh` | Run before the demo -- verifies and auto-fixes the environment |
 | `scripts/` | Incident simulation, reset, audit correlation, ephemeral-kubeconfig/orders-psql helpers |
